@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useInfraStore } from '../../store/infraStore';
 import { useUIStore } from '../../store/uiStore';
-import { getDefaultStrategy, needsAZConfiguration, generateCIDRs } from '../../types/deployment';
+import { getDefaultStrategy } from '../../types/deployment';
 import type { DeploymentStrategy } from '../../types/deployment';
 import { ServiceDefinition } from '../../api/registry';
 
@@ -272,7 +272,7 @@ const ModuleEditor: React.FC = () => {
                                         <div className="mt-3 pt-3 border-t border-gray-700">
                                             <div className="text-xs text-gray-400 mb-1">Will create:</div>
                                             <div className="flex flex-wrap gap-1">
-                                                {deploymentConfig.availabilityZones.map((az, idx) => (
+                                                {deploymentConfig.availabilityZones.map((az: string) => (
                                                     <span
                                                         key={az}
                                                         className="text-xs px-2 py-1 bg-blue-900 border border-blue-700 text-blue-200 rounded"

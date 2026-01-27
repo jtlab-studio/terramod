@@ -6,7 +6,6 @@ import { ModuleScope } from '../../types/deployment';
 
 const ModulePanel: React.FC = () => {
     const domains = useInfraStore((state) => Array.from(state.domains.values()));
-    const resources = useInfraStore((state) => state.resources);
     const addDomain = useInfraStore((state) => state.addDomain);
     const selectedId = useUIStore((state) => state.selectedId);
     const setSelectedId = useUIStore((state) => state.setSelectedId);

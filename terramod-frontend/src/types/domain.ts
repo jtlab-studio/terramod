@@ -1,4 +1,4 @@
-export type DomainType = 
+export type DomainType =
   | 'networking'
   | 'compute'
   | 'serverless'
@@ -37,4 +37,5 @@ export interface Domain {
   position: Position;
   width: number;
   height: number;
+  scope?: 'global' | 'regional' | 'multi-az';  // NEW: Module scope for deployment
 }

@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { useUIStore } from '../store/uiStore';
 import { useInfraStore } from '../store/infraStore';
-import Canvas from '../features/canvas/Canvas';
+import ModulePanel from '../features/modules/ModulePanel';
+import ModuleEditor from '../features/modules/ModuleEditor';
+import DeploymentConfigBar from '../features/modules/DeploymentConfigBar';
 import InspectorPanel from '../features/inspector/InspectorPanel';
 import ServicePalette from '../features/sidebar/ServicePalette';
-import DomainList from '../features/sidebar/DomainList';
 import ExportModal from '../features/export/ExportModal';
 
 const Header: React.FC<{ onExport: () => void }> = ({ onExport }) => {
@@ -92,7 +93,7 @@ const Header: React.FC<{ onExport: () => void }> = ({ onExport }) => {
             <div className="flex items-center gap-4">
                 <h1 className="text-xl font-bold text-gray-100">Terramod</h1>
                 <div className="text-xs text-gray-400">
-                    {domainCount} {domainCount === 1 ? 'domain' : 'domains'} •
+                    {domainCount} {domainCount === 1 ? 'module' : 'modules'} •
                     {' '}{resourceCount} {resourceCount === 1 ? 'resource' : 'resources'} •
                     {' '}{connectionCount} {connectionCount === 1 ? 'connection' : 'connections'}
                 </div>
@@ -148,57 +149,36 @@ const Header: React.FC<{ onExport: () => void }> = ({ onExport }) => {
     );
 };
 
-const Sidebar: React.FC = () => {
-    const [activeTab, setActiveTab] = React.useState<'services' | 'domains'>('services');
-
-    return (
-        <div className="w-64 bg-gray-900 border-r border-gray-800 flex flex-col">
-            <div className="flex border-b border-gray-800">
-                <button
-                    onClick={() => setActiveTab('services')}
-                    className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'services'
-                        ? 'bg-gray-800 border-b-2 border-gray-600 text-gray-200'
-                        : 'text-gray-400 hover:text-gray-300 hover:bg-gray-850'
-                        }`}
-                >
-                    Services
-                </button>
-                <button
-                    onClick={() => setActiveTab('domains')}
-                    className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'domains'
-                        ? 'bg-gray-800 border-b-2 border-gray-600 text-gray-200'
-                        : 'text-gray-400 hover:text-gray-300 hover:bg-gray-850'
-                        }`}
-                >
-                    Domains
-                </button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4">
-                {activeTab === 'services' ? (
-                    <ServicePalette />
-                ) : (
-                    <DomainList />
-                )}
-            </div>
-        </div>
-    );
-};
-
 const MainLayout: React.FC = () => {
-    const sidebarOpen = useUIStore((state) => state.sidebarOpen);
     const inspectorOpen = useUIStore((state) => state.inspectorOpen);
     const [exportModalOpen, setExportModalOpen] = useState(false);
 
     return (
         <div className="flex flex-col h-screen bg-gray-900">
             <Header onExport={() => setExportModalOpen(true)} />
+
             <div className="flex flex-1 overflow-hidden">
-                {sidebarOpen && <Sidebar />}
-                <div className="flex-1 bg-gray-900 relative">
-                    <Canvas />
+                {/* Left: Module Panel */}
+                <ModulePanel />
+
+                {/* Center: Module Editor */}
+                <ModuleEditor />
+
+                {/* Right: Service Palette / Inspector */}
+                <div className="w-80 bg-gray-900 border-l border-gray-800 flex flex-col">
+                    {inspectorOpen ? (
+                        <InspectorPanel />
+                    ) : (
+                        <div className="p-4 overflow-y-auto">
+                            <h2 className="text-lg font-bold text-gray-100 mb-4">Services</h2>
+                            <ServicePalette />
+                        </div>
+                    )}
                 </div>
-                {inspectorOpen && <InspectorPanel />}
             </div>
+
+            {/* Bottom: Deployment Config Bar */}
+            <DeploymentConfigBar />
 
             {/* Export Modal */}
             <ExportModal

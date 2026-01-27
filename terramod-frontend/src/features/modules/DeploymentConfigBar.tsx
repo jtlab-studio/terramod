@@ -41,7 +41,7 @@ const DeploymentConfigBar: React.FC = () => {
     const handleAZToggle = (az: string) => {
         const currentAZs = deploymentConfig.availabilityZones;
         const newAZs = currentAZs.includes(az)
-            ? currentAZs.filter(a => a !== az)
+            ? currentAZs.filter((a: string) => a !== az)
             : [...currentAZs, az].sort();
 
         updateDeploymentConfig({
