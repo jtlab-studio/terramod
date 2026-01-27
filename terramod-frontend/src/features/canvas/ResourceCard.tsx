@@ -56,29 +56,64 @@ const ResourceCard: React.FC<ResourceCardProps> = ({
       x={resource.position.x}
       y={resource.position.y}
       draggable={true}
-      onDragStart={() => {
+      dragBoundFunc={function (pos) {
+        // Allow dragging anywhere - no restrictions
+        return pos;
+      }}
+      onDragStart={(e) => {
+        // Ensure drag is not prevented
+        e.cancelBubble = false;
+
         onDragStart();
-        console.log('Drag start:', resource.name);
+        const container = e.target.getStage()?.container();
+        if (container) container.style.cursor = 'grabbing';
+        console.log('🎯 DRAG START:', resource.name, resource.id);
       }}
       onDragMove={(e) => {
-        onDragMove(resource.id, e.target.x(), e.target.y());
+        const x = e.target.x();
+        const y = e.target.y();
+        onDragMove(resource.id, x, y);
+
+        // Force stage update
+        const stage = e.target.getStage();
+        if (stage) {
+          stage.batchDraw();
+        }
       }}
       onDragEnd={(e) => {
         const newX = Math.round(e.target.x() / GRID_SIZE) * GRID_SIZE;
         const newY = Math.round(e.target.y() / GRID_SIZE) * GRID_SIZE;
+
+        // Update position in store
         updateResource(resource.id, { position: { x: newX, y: newY } });
+
+        // Notify parent
         onDragEnd();
-        e.target.getStage()?.batchDraw();
-        console.log('Drag end:', resource.name);
+
+        // Force stage update
+        const stage = e.target.getStage();
+        if (stage) {
+          stage.batchDraw();
+          const container = stage.container();
+          if (container) container.style.cursor = 'grab';
+        }
+
+        console.log('🎯 DRAG END:', resource.name, 'moved to:', newX, newY);
       }}
-      onMouseEnter={() => {
+      onMouseEnter={(e) => {
         setIsHovering(true);
+        if (!isConnectionDragging) {
+          const container = e.target.getStage()?.container();
+          if (container) container.style.cursor = 'grab';
+        }
       }}
-      onMouseLeave={() => {
+      onMouseLeave={(e) => {
         setIsHovering(false);
+        const container = e.target.getStage()?.container();
+        if (container) container.style.cursor = 'default';
       }}
     >
-      {/* Main card */}
+      {/* Main card - IMPORTANT: listening must be true for drag to work */}
       <Rect
         width={160}
         height={80}
@@ -86,11 +121,13 @@ const ResourceCard: React.FC<ResourceCardProps> = ({
         stroke={isSelected ? '#D1D5DB' : '#374151'}
         strokeWidth={isSelected ? 3 : 2}
         cornerRadius={4}
+        listening={true}
         onClick={(e) => {
           e.cancelBubble = true;
           const pos = groupRef.current?.getRelativePointerPosition();
           if (pos && pos.x >= 30 && pos.x <= 130 && pos.y >= 10 && pos.y <= 70) {
             setSelectedId(resource.id);
+            console.log('🖱️ SELECTED:', resource.name);
           }
         }}
         shadowColor="rgba(0,0,0,0.5)"
@@ -108,81 +145,80 @@ const ResourceCard: React.FC<ResourceCardProps> = ({
       <Text text={`ID: ${resource.id.substring(0, 12)}...`} fontSize={9} fill="#6B7280" x={10} y={55} width={140} listening={false} />
 
       {/* LEFT Connection dot */}
-      <Circle
-        x={0}
-        y={40}
-        radius={8}
-        fill={isConnectionDragging ? '#9CA3AF' : '#6B7280'}
-        stroke="#1F2937"
-        strokeWidth={2}
-        onClick={(e) => {
-          e.cancelBubble = true;
-          const stage = e.target.getStage();
-          if (!stage) return;
+      <Group x={0} y={40}>
+        <Circle
+          radius={8}
+          fill={isConnectionDragging ? '#9CA3AF' : '#6B7280'}
+          stroke="#1F2937"
+          strokeWidth={2}
+          listening={true}
+          onClick={(e) => {
+            e.cancelBubble = true;
+            const stage = e.target.getStage();
+            if (!stage) return;
 
-          const absPos = e.target.getAbsolutePosition();
-          const x = (absPos.x - viewport.x) / viewport.zoom;
-          const y = (absPos.y - viewport.y) / viewport.zoom;
+            const absPos = e.target.getAbsolutePosition();
+            const x = (absPos.x - viewport.x) / viewport.zoom;
+            const y = (absPos.y - viewport.y) / viewport.zoom;
 
-          if (!isConnectionDragging) {
-            onConnectionStart(resource.id, x, y);
-          } else {
-            onConnectionEnd(resource.id);
-          }
-        }}
-        onMouseEnter={(e) => {
-          const c = e.target.getStage()?.container();
-          if (c) c.style.cursor = 'crosshair';
-        }}
-        onMouseLeave={(e) => {
-          const c = e.target.getStage()?.container();
-          if (c) c.style.cursor = 'default';
-        }}
-      />
+            if (!isConnectionDragging) {
+              onConnectionStart(resource.id, x, y);
+              console.log('🔗 Connection START from', resource.name, 'LEFT dot');
+            } else {
+              onConnectionEnd(resource.id);
+              console.log('🔗 Connection END at', resource.name, 'LEFT dot');
+            }
+          }}
+          onMouseEnter={(e) => {
+            const c = e.target.getStage()?.container();
+            if (c) c.style.cursor = 'crosshair';
+          }}
+          onMouseLeave={(e) => {
+            const c = e.target.getStage()?.container();
+            if (c) c.style.cursor = isHovering ? 'grab' : 'default';
+          }}
+        />
+        <Circle radius={3} fill="#D1D5DB" listening={false} opacity={0.9} />
+        {isConnectionDragging && <Circle radius={12} stroke="#9CA3AF" strokeWidth={2} opacity={0.5} listening={false} />}
+      </Group>
 
       {/* RIGHT Connection dot */}
-      <Circle
-        x={160}
-        y={40}
-        radius={8}
-        fill={isConnectionDragging ? '#9CA3AF' : '#6B7280'}
-        stroke="#1F2937"
-        strokeWidth={2}
-        onClick={(e) => {
-          e.cancelBubble = true;
-          const stage = e.target.getStage();
-          if (!stage) return;
+      <Group x={160} y={40}>
+        <Circle
+          radius={8}
+          fill={isConnectionDragging ? '#9CA3AF' : '#6B7280'}
+          stroke="#1F2937"
+          strokeWidth={2}
+          listening={true}
+          onClick={(e) => {
+            e.cancelBubble = true;
+            const stage = e.target.getStage();
+            if (!stage) return;
 
-          const absPos = e.target.getAbsolutePosition();
-          const x = (absPos.x - viewport.x) / viewport.zoom;
-          const y = (absPos.y - viewport.y) / viewport.zoom;
+            const absPos = e.target.getAbsolutePosition();
+            const x = (absPos.x - viewport.x) / viewport.zoom;
+            const y = (absPos.y - viewport.y) / viewport.zoom;
 
-          if (!isConnectionDragging) {
-            onConnectionStart(resource.id, x, y);
-          } else {
-            onConnectionEnd(resource.id);
-          }
-        }}
-        onMouseEnter={(e) => {
-          const c = e.target.getStage()?.container();
-          if (c) c.style.cursor = 'crosshair';
-        }}
-        onMouseLeave={(e) => {
-          const c = e.target.getStage()?.container();
-          if (c) c.style.cursor = 'default';
-        }}
-      />
-
-      {/* Visual indicators on dots */}
-      <Circle x={0} y={40} radius={3} fill="#D1D5DB" listening={false} opacity={0.9} />
-      <Circle x={160} y={40} radius={3} fill="#D1D5DB" listening={false} opacity={0.9} />
-
-      {isConnectionDragging && (
-        <>
-          <Circle x={0} y={40} radius={12} stroke="#9CA3AF" strokeWidth={2} opacity={0.5} listening={false} />
-          <Circle x={160} y={40} radius={12} stroke="#9CA3AF" strokeWidth={2} opacity={0.5} listening={false} />
-        </>
-      )}
+            if (!isConnectionDragging) {
+              onConnectionStart(resource.id, x, y);
+              console.log('🔗 Connection START from', resource.name, 'RIGHT dot');
+            } else {
+              onConnectionEnd(resource.id);
+              console.log('🔗 Connection END at', resource.name, 'RIGHT dot');
+            }
+          }}
+          onMouseEnter={(e) => {
+            const c = e.target.getStage()?.container();
+            if (c) c.style.cursor = 'crosshair';
+          }}
+          onMouseLeave={(e) => {
+            const c = e.target.getStage()?.container();
+            if (c) c.style.cursor = isHovering ? 'grab' : 'default';
+          }}
+        />
+        <Circle radius={3} fill="#D1D5DB" listening={false} opacity={0.9} />
+        {isConnectionDragging && <Circle radius={12} stroke="#9CA3AF" strokeWidth={2} opacity={0.5} listening={false} />}
+      </Group>
     </Group>
   );
 };
