@@ -1,10 +1,14 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import logging
+import os
+
+# Import routes - these import the router objects
 from app.api.routes import graph, terraform, registry
+
+# Import other dependencies
 from app.registry.loader import ServiceRegistry
 from app.utils.logger import setup_logging
-import os
 
 # Setup logging
 setup_logging(os.getenv('LOG_LEVEL', 'INFO'))
@@ -43,10 +47,20 @@ async def startup_event():
 async def shutdown_event():
     logger.info("Application shutting down")
 
-# Include routers
+# Include routers - CRITICAL: graph, terraform, registry must have .router attribute
 app.include_router(graph.router, prefix="/api/v1/graph", tags=["graph"])
 app.include_router(terraform.router, prefix="/api/v1/terraform", tags=["terraform"])
 app.include_router(registry.router, prefix="/api/v1/registry", tags=["registry"])
+
+# Optional: Try to load IR routes if they exist
+try:
+    from app.api.routes import ir_routes
+    app.include_router(ir_routes.router, prefix="/api/v1/ir", tags=["ir"])
+    logger.info("IR routes loaded successfully")
+except ImportError:
+    logger.info("IR routes not found (optional, skipping)")
+except Exception as e:
+    logger.warning(f"Could not load IR routes: {e}")
 
 # Health check endpoint
 @app.get("/health")

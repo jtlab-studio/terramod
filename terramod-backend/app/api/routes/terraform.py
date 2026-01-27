@@ -1,16 +1,31 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File, status
 from fastapi.responses import FileResponse, StreamingResponse
-from typing import List, Dict
+from typing import List, Dict, Any
 from pydantic import BaseModel
 import logging
 import io
 import zipfile
+import re
 from app.core.graph import InfrastructureGraph
 from app.terraform.generator import TerraformGenerator
 from app.terraform.parser import TerraformParser
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+def camel_to_snake(name: str) -> str:
+    """Convert camelCase to snake_case"""
+    name = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
+    return re.sub('([a-z0-9])([A-Z])', r'\1_\2', name).lower()
+
+def convert_keys_to_snake(data: Any) -> Any:
+    """Recursively convert dict keys from camelCase to snake_case"""
+    if isinstance(data, dict):
+        return {camel_to_snake(k): convert_keys_to_snake(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [convert_keys_to_snake(item) for item in data]
+    else:
+        return data
 
 class TerraformModuleModel(BaseModel):
     name: str
@@ -37,8 +52,14 @@ class ExportRequestModel(BaseModel):
 async def generate_terraform(graph_data: InfrastructureGraphModel):
     """Generate Terraform code from infrastructure graph"""
     try:
+        # Convert camelCase to snake_case
+        graph_dict = graph_data.dict()
+        graph_dict_snake = convert_keys_to_snake(graph_dict)
+        
+        logger.info(f"Generating Terraform for {len(graph_dict_snake['resources'])} resources")
+        
         # Convert to graph object
-        graph = InfrastructureGraph.from_dict(graph_data.dict())
+        graph = InfrastructureGraph.from_dict(graph_dict_snake)
         
         # Generate Terraform
         generator = TerraformGenerator()
@@ -59,7 +80,7 @@ async def generate_terraform(graph_data: InfrastructureGraphModel):
             terraform_config=terraform_project.terraform_config
         )
     except Exception as e:
-        logger.error(f"Terraform generation failed: {e}")
+        logger.error(f"Terraform generation failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(e)
@@ -92,8 +113,12 @@ async def import_terraform(files: List[UploadFile] = File(...)):
 async def export_project(request: ExportRequestModel):
     """Export Terraform project as ZIP or directory"""
     try:
+        # Convert camelCase to snake_case
+        graph_dict = request.graph.dict()
+        graph_dict_snake = convert_keys_to_snake(graph_dict)
+        
         # Convert to graph
-        graph = InfrastructureGraph.from_dict(request.graph.dict())
+        graph = InfrastructureGraph.from_dict(graph_dict_snake)
         
         # Generate Terraform
         generator = TerraformGenerator()
@@ -126,7 +151,7 @@ async def export_project(request: ExportRequestModel):
                 detail="Only 'zip' format is supported"
             )
     except Exception as e:
-        logger.error(f"Export failed: {e}")
+        logger.error(f"Export failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
