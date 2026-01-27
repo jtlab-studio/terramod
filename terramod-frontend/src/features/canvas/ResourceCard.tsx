@@ -10,6 +10,9 @@ interface ResourceCardProps {
   resource: Resource;
   onConnectionStart: (resourceId: string, x: number, y: number) => void;
   onConnectionEnd: (targetId: string | null) => void;
+  onDragStart: () => void;
+  onDragMove: (resourceId: string, x: number, y: number) => void;
+  onDragEnd: () => void;
   isConnectionDragging: boolean;
 }
 
@@ -17,6 +20,9 @@ const ResourceCard: React.FC<ResourceCardProps> = ({
   resource,
   onConnectionStart,
   onConnectionEnd,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
   isConnectionDragging
 }) => {
   const groupRef = useRef<Konva.Group>(null);
@@ -47,47 +53,79 @@ const ResourceCard: React.FC<ResourceCardProps> = ({
     return colors[domainType] || '#6B7280';
   };
 
-  const handleClick = (e: any) => {
+  // Click on center area to select (not on dots)
+  const handleMainRectClick = (e: any) => {
     e.cancelBubble = true;
-    setSelectedId(resource.id);
+
+    // Don't select if we're currently dragging
+    if (isDragging) return;
+
+    const group = groupRef.current;
+    if (!group) return;
+
+    const pos = group.getRelativePointerPosition();
+    if (!pos) return;
+
+    // Center area: avoid edges where dots are (leave 30px margin on sides)
+    if (pos.x >= 30 && pos.x <= 130 && pos.y >= 10 && pos.y <= 70) {
+      setSelectedId(resource.id);
+      console.log('🖱️ Selected resource:', resource.id);
+    }
   };
 
-  const handleDragStart = () => {
+  // Drag handlers - drag works from ANYWHERE on the card
+  const handleDragStart = (e: any) => {
     setIsDragging(true);
+    onDragStart();
+
+    const container = e.target.getStage()?.container();
+    if (container) container.style.cursor = 'grabbing';
+
+    console.log('🎯 Started dragging:', resource.id);
+  };
+
+  const handleDragMove = (e: any) => {
+    const x = e.target.x();
+    const y = e.target.y();
+    onDragMove(resource.id, x, y);
   };
 
   const handleDragEnd = (e: any) => {
-    e.cancelBubble = true;
     setIsDragging(false);
+    onDragEnd();
 
-    const newX = e.target.x();
-    const newY = e.target.y();
+    const newX = Math.round(e.target.x() / GRID_SIZE) * GRID_SIZE;
+    const newY = Math.round(e.target.y() / GRID_SIZE) * GRID_SIZE;
 
-    const snappedX = Math.round(newX / GRID_SIZE) * GRID_SIZE;
-    const snappedY = Math.round(newY / GRID_SIZE) * GRID_SIZE;
+    updateResource(resource.id, { position: { x: newX, y: newY } });
 
-    updateResource(resource.id, {
-      position: { x: snappedX, y: snappedY }
-    });
+    const stage = e.target.getStage();
+    if (stage) stage.batchDraw();
+
+    const container = stage?.container();
+    if (container) container.style.cursor = 'grab';
+
+    console.log('📍 Finished dragging, snapped to:', { newX, newY });
   };
 
   const handleMouseEnter = (e: any) => {
     setIsHovering(true);
-    const container = e.target.getStage()?.container();
-    if (container) {
-      container.style.cursor = 'move';
+    if (!isConnectionDragging && !isDragging) {
+      const container = e.target.getStage()?.container();
+      if (container) container.style.cursor = 'grab';
     }
   };
 
   const handleMouseLeave = (e: any) => {
     setIsHovering(false);
-    const container = e.target.getStage()?.container();
-    if (container) {
-      container.style.cursor = 'default';
+    if (!isDragging) {
+      const container = e.target.getStage()?.container();
+      if (container) container.style.cursor = 'default';
     }
   };
 
-  const handleConnectionDotMouseDown = (e: any) => {
+  // Connection dot handlers
+  const handleDotClick = (e: any, side: 'left' | 'right') => {
     e.cancelBubble = true;
 
     const stage = e.target.getStage();
@@ -97,28 +135,24 @@ const ResourceCard: React.FC<ResourceCardProps> = ({
     const x = (absPos.x - viewport.x) / viewport.zoom;
     const y = (absPos.y - viewport.y) / viewport.zoom;
 
-    onConnectionStart(resource.id, x, y);
-  };
-
-  const handleConnectionDotMouseUp = (e: any) => {
-    e.cancelBubble = true;
-
-    if (isConnectionDragging) {
+    if (!isConnectionDragging) {
+      onConnectionStart(resource.id, x, y);
+      console.log('🔗 Started connection from', side, 'dot');
+    } else {
       onConnectionEnd(resource.id);
+      console.log('🔗 Completed connection at', side, 'dot');
     }
   };
 
-  const handleConnectionDotMouseEnter = (e: any) => {
+  const handleDotMouseEnter = (e: any) => {
     const container = e.target.getStage()?.container();
-    if (container) {
-      container.style.cursor = 'crosshair';
-    }
+    if (container) container.style.cursor = 'crosshair';
   };
 
-  const handleConnectionDotMouseLeave = (e: any) => {
+  const handleDotMouseLeave = (e: any) => {
     const container = e.target.getStage()?.container();
-    if (container) {
-      container.style.cursor = isHovering ? 'move' : 'default';
+    if (container && !isDragging) {
+      container.style.cursor = isHovering ? 'grab' : 'default';
     }
   };
 
@@ -138,19 +172,20 @@ const ResourceCard: React.FC<ResourceCardProps> = ({
       y={resource.position.y}
       draggable={true}
       onDragStart={handleDragStart}
+      onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      {/* Main card - grey theme */}
+      {/* Main card - clickable for selection, draggable for movement */}
       <Rect
         width={160}
         height={80}
-        fill="#1F2937" // gray-800
-        stroke={isSelected ? '#D1D5DB' : '#374151'} // gray-300 : gray-700
+        fill="#1F2937"
+        stroke={isSelected ? '#D1D5DB' : '#374151'}
         strokeWidth={isSelected ? 3 : 2}
         cornerRadius={4}
-        onClick={handleClick}
+        onClick={handleMainRectClick}
         shadowColor="rgba(0,0,0,0.5)"
         shadowBlur={isHovering || isSelected ? 10 : 6}
         shadowOffset={{ x: 0, y: 2 }}
@@ -162,97 +197,110 @@ const ResourceCard: React.FC<ResourceCardProps> = ({
         <Rect
           width={160}
           height={80}
-          fill="rgba(156, 163, 175, 0.08)" // gray-400 with low opacity
+          fill="rgba(156, 163, 175, 0.08)"
           cornerRadius={4}
           listening={false}
         />
       )}
 
-      {/* Domain badge (top-left) */}
+      {/* Domain badge */}
       {domain && (
-        <Group x={4} y={4}>
-          <Rect
-            width={12}
-            height={12}
-            fill={getDomainColor(domain.type)}
-            cornerRadius={2}
-          />
-        </Group>
+        <Rect
+          x={4}
+          y={4}
+          width={12}
+          height={12}
+          fill={getDomainColor(domain.type)}
+          cornerRadius={2}
+          listening={false}
+        />
       )}
 
-      {/* Resource type */}
+      {/* Text */}
       <Text
         text={shortType}
         fontSize={11}
-        fill="#9CA3AF" // gray-400
+        fill="#9CA3AF"
         x={20}
         y={12}
         width={120}
         listening={false}
       />
-
-      {/* Resource name */}
       <Text
         text={displayName}
         fontSize={14}
         fontStyle="bold"
-        fill="#F3F4F6" // gray-100
+        fill="#F3F4F6"
         x={10}
         y={32}
         width={140}
         listening={false}
       />
-
-      {/* Resource ID or metadata */}
       <Text
         text={`ID: ${resource.id.substring(0, 12)}...`}
         fontSize={9}
-        fill="#6B7280" // gray-500
+        fill="#6B7280"
         x={10}
         y={55}
         width={140}
         listening={false}
       />
 
-      {/* Connection dot - grey when not dragging */}
-      <Group x={160} y={40}>
+      {/* LEFT Connection dot (INPUT) */}
+      <Group x={0} y={40}>
         <Circle
           radius={8}
-          fill={isConnectionDragging ? '#9CA3AF' : '#6B7280'} // gray-400 : gray-500
-          stroke="#1F2937" // Match card background
+          fill={isConnectionDragging ? '#9CA3AF' : '#6B7280'}
+          stroke="#1F2937"
           strokeWidth={2}
-          shadowColor="rgba(0,0,0,0.3)"
-          shadowBlur={4}
-          shadowOffset={{ x: 0, y: 1 }}
-          shadowOpacity={0.5}
-          onMouseDown={handleConnectionDotMouseDown}
-          onMouseUp={handleConnectionDotMouseUp}
-          onMouseEnter={handleConnectionDotMouseEnter}
-          onMouseLeave={handleConnectionDotMouseLeave}
+          onClick={(e) => handleDotClick(e, 'left')}
+          onMouseEnter={handleDotMouseEnter}
+          onMouseLeave={handleDotMouseLeave}
         />
-        {/* Inner dot for visual depth */}
         <Circle
           radius={3}
-          fill="#D1D5DB" // gray-300
-          x={0}
-          y={0}
+          fill="#D1D5DB"
           listening={false}
           opacity={0.9}
         />
-      </Group>
-
-      {/* Connection dot hover effect */}
-      {isConnectionDragging && (
-        <Group x={160} y={40}>
+        {isConnectionDragging && (
           <Circle
             radius={12}
-            stroke="#9CA3AF" // gray-400
+            stroke="#9CA3AF"
             strokeWidth={2}
             opacity={0.5}
             listening={false}
           />
-        </Group>
-      )}
+        )}
+      </Group>
+
+      {/* RIGHT Connection dot (OUTPUT) */}
+      <Group x={160} y={40}>
+        <Circle
+          radius={8}
+          fill={isConnectionDragging ? '#9CA3AF' : '#6B7280'}
+          stroke="#1F2937"
+          strokeWidth={2}
+          onClick={(e) => handleDotClick(e, 'right')}
+          onMouseEnter={handleDotMouseEnter}
+          onMouseLeave={handleDotMouseLeave}
+        />
+        <Circle
+          radius={3}
+          fill="#D1D5DB"
+          listening={false}
+          opacity={0.9}
+        />
+        {isConnectionDragging && (
+          <Circle
+            radius={12}
+            stroke="#9CA3AF"
+            strokeWidth={2}
+            opacity={0.5}
+            listening={false}
+          />
+        )}
+      </Group>
     </Group>
   );
 };
