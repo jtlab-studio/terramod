@@ -1,5 +1,5 @@
 import { get } from './client';
-import { DomainType } from '../types/domain';
+import type { DomainType } from '../types/domain';
 
 export interface ServiceDefinition {
     resource_type: string;

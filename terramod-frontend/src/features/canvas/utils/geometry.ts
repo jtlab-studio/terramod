@@ -1,7 +1,6 @@
-import { Position } from '../../../types/domain';
-import { Domain } from '../../../types/domain';
-import { Resource } from '../../../types/resource';
-
+import type { Position } from '../../../types/domain';
+import type { Domain } from '../../../types/domain';
+import type { Resource } from '../../../types/resource';
 export const calculateConnectionPath = (
     source: Position,
     target: Position

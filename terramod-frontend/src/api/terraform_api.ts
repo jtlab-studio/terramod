@@ -1,5 +1,5 @@
 import { post } from './client';
-import { InfrastructureGraph } from './graph';
+import type { InfrastructureGraph } from './graph'
 
 export interface TerraformModule {
     name: string;

@@ -1,7 +1,7 @@
 import { post } from './client';
-import { Domain } from '../types/domain';
-import { Resource } from '../types/resource';
-import { Connection } from '../types/connection';
+import type { Domain } from '../types/domain';
+import type { Resource } from '../types/resource';
+import type { Connection } from '../types/connection';
 
 export interface InfrastructureGraph {
     domains: Domain[];
