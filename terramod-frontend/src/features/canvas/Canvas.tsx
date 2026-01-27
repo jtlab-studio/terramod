@@ -1,15 +1,15 @@
 import React, { useRef, useEffect, useCallback } from 'react';
-import { Stage, Layer } from 'react-konva';
+import { Stage, Layer, Line } from 'react-konva';
 import Konva from 'konva';
 import { useInfraStore } from '../../store/infraStore';
 import { useUIStore } from '../../store/uiStore';
 import { useCanvasInteractions } from './hooks/useCanvasInteractions';
 import { useZoomPan } from './hooks/useZoomPan';
 import { useAutoValidation } from './hooks/useAutoValidation';
-import DomainBoundary from './DomainBoundary';
+import ResourceCard from './ResourceCard';
 import Connection from './Connection';
 import ConnectionTool from './ConnectionTool';
-import { CANVAS_MIN_WIDTH, CANVAS_PADDING } from '../../config/constants';
+import { CANVAS_MIN_WIDTH, CANVAS_PADDING, GRID_SIZE } from '../../config/constants';
 import { ServiceDefinition } from '../../api/registry';
 
 const Canvas: React.FC = () => {
@@ -17,6 +17,7 @@ const Canvas: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const domains = useInfraStore((state) => Array.from(state.domains.values()));
+  const resources = useInfraStore((state) => Array.from(state.resources.values()));
   const connections = useInfraStore((state) => Array.from(state.connections.values()));
   const addDomain = useInfraStore((state) => state.addDomain);
   const addResource = useInfraStore((state) => state.addResource);
@@ -79,11 +80,15 @@ const Canvas: React.FC = () => {
     return `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   };
 
+  // Snap to grid
+  const snapToGrid = (value: number): number => {
+    return Math.round(value / GRID_SIZE) * GRID_SIZE;
+  };
+
   // Get default arguments for a service
   const getDefaultArguments = (service: ServiceDefinition): Record<string, any> => {
     const defaults: Record<string, any> = {};
 
-    // Set common defaults based on resource type
     if (service.resource_type === 'aws_vpc') {
       defaults.cidr_block = '10.0.0.0/16';
       defaults.enable_dns_hostnames = true;
@@ -100,10 +105,8 @@ const Canvas: React.FC = () => {
         cidr_blocks: ['0.0.0.0/0']
       }];
     } else if (service.resource_type === 'aws_instance') {
-      defaults.ami = 'ami-0c55b159cbfafe1f0'; // Amazon Linux 2
+      defaults.ami = 'ami-0c55b159cbfafe1f0';
       defaults.instance_type = 't3.micro';
-    } else if (service.resource_type === 'aws_s3_bucket') {
-      // bucket name will be set from resource name
     } else if (service.resource_type === 'aws_lambda_function') {
       defaults.runtime = 'python3.11';
       defaults.handler = 'index.handler';
@@ -125,20 +128,12 @@ const Canvas: React.FC = () => {
     return defaults;
   };
 
-  // Find if point is inside any domain
-  const findDomainAtPoint = (x: number, y: number) => {
-    for (const domain of domains) {
-      const inDomain =
-        x >= domain.position.x &&
-        x <= domain.position.x + domain.width &&
-        y >= domain.position.y &&
-        y <= domain.position.y + domain.height;
-
-      if (inDomain) {
-        return domain;
-      }
-    }
-    return null;
+  // Count resources per domain
+  const getResourceCountByDomain = (domainType: string): number => {
+    return resources.filter(r => {
+      const domain = domains.find(d => d.id === r.domainId);
+      return domain?.type === domainType;
+    }).length;
   };
 
   const handleStageDrop = useCallback((e: React.DragEvent) => {
@@ -160,88 +155,77 @@ const Canvas: React.FC = () => {
 
       // Get drop position relative to stage (accounting for zoom and pan)
       const stageBox = stage.container().getBoundingClientRect();
-      const x = (e.clientX - stageBox.left - viewport.x) / viewport.zoom;
-      const y = (e.clientY - stageBox.top - viewport.y) / viewport.zoom;
+      const rawX = (e.clientX - stageBox.left - viewport.x) / viewport.zoom;
+      const rawY = (e.clientY - stageBox.top - viewport.y) / viewport.zoom;
 
-      console.log('📍 Drop position:', { x, y, viewport });
+      // Snap to grid
+      const x = snapToGrid(rawX);
+      const y = snapToGrid(rawY);
+
+      console.log('📍 Drop position (snapped):', { x, y, viewport });
 
       // Generate IDs
       const resourceId = generateId(service.resource_type);
       const resourceName = service.resource_type.replace('aws_', '').replace(/_/g, '_');
 
-      // Check if dropped on existing domain
-      let targetDomain = findDomainAtPoint(x, y);
+      // Find or create domain for this service type
+      let targetDomain = domains.find(d => d.type === service.domain);
 
-      if (targetDomain) {
-        // Add to existing domain
-        console.log('➕ Adding to existing domain:', targetDomain.name);
-
-        const newResource = {
-          id: resourceId,
-          type: service.resource_type,
-          domainId: targetDomain.id,
-          name: `${resourceName}_${targetDomain.resourceIds.length + 1}`,
-          arguments: getDefaultArguments(service),
-          position: {
-            x: x - targetDomain.position.x,
-            y: y - targetDomain.position.y
-          },
-          validationState: { isValid: false, errors: [], warnings: [] }
-        };
-
-        addResource(newResource);
-        setSelectedId(resourceId);
-      } else {
-        // Create new domain
+      if (!targetDomain) {
+        // Create new domain (logical only, no visual representation)
         console.log('🆕 Creating new domain:', service.domain);
 
         const domainId = generateId(`domain_${service.domain}`);
-        const domainX = Math.max(CANVAS_PADDING, x - 150);
-        const domainY = Math.max(CANVAS_PADDING, y - 100);
+        const resourceCount = getResourceCountByDomain(service.domain);
 
         const newDomain = {
           id: domainId,
-          name: service.domain,
+          name: `${service.domain}_${resourceCount + 1}`,
           type: service.domain,
           resourceIds: [resourceId],
           inputs: [],
           outputs: [],
-          position: { x: domainX, y: domainY },
-          width: 400,
-          height: 300
-        };
-
-        const newResource = {
-          id: resourceId,
-          type: service.resource_type,
-          domainId: domainId,
-          name: `${resourceName}_1`,
-          arguments: getDefaultArguments(service),
-          position: { x: 50, y: 80 },
-          validationState: { isValid: false, errors: [], warnings: [] }
+          position: { x: 0, y: 0 }, // Not used for rendering
+          width: 0,
+          height: 0
         };
 
         addDomain(newDomain);
-        addResource(newResource);
-        setSelectedId(resourceId);
-
-        console.log('✅ Created domain and resource');
+        targetDomain = newDomain;
+      } else {
+        // Will be added to existing domain via addResource
+        console.log('➕ Adding to existing domain:', targetDomain.name);
       }
+
+      const newResource = {
+        id: resourceId,
+        type: service.resource_type,
+        domainId: targetDomain.id,
+        name: `${resourceName}_${targetDomain.resourceIds.length + 1}`,
+        arguments: getDefaultArguments(service),
+        position: { x, y }, // Absolute position on canvas
+        validationState: { isValid: false, errors: [], warnings: [] }
+      };
+
+      addResource(newResource);
+      setSelectedId(resourceId);
+      console.log('✅ Created resource:', resourceId);
     } catch (error) {
       console.error('❌ Failed to handle drop:', error);
     }
-  }, [domains, viewport, addDomain, addResource, setSelectedId]);
+  }, [domains, viewport, addDomain, addResource, setSelectedId, resources]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
 
-    // Show drop feedback
     const stage = stageRef.current;
     if (stage) {
       const stageBox = stage.container().getBoundingClientRect();
-      const x = (e.clientX - stageBox.left - viewport.x) / viewport.zoom;
-      const y = (e.clientY - stageBox.top - viewport.y) / viewport.zoom;
+      const rawX = (e.clientX - stageBox.left - viewport.x) / viewport.zoom;
+      const rawY = (e.clientY - stageBox.top - viewport.y) / viewport.zoom;
+      const x = snapToGrid(rawX);
+      const y = snapToGrid(rawY);
       setDropFeedback({ x, y });
     }
   }, [viewport]);
@@ -250,7 +234,41 @@ const Canvas: React.FC = () => {
     setDropFeedback(null);
   }, []);
 
-  // Get mode display text
+  // Generate grid lines
+  const renderGrid = () => {
+    const lines = [];
+    const gridColor = '#E5E7EB'; // gray-200
+    const gridOpacity = 0.5;
+
+    // Vertical lines
+    for (let i = 0; i < dimensions.width / GRID_SIZE + 10; i++) {
+      lines.push(
+        <Line
+          key={`v-${i}`}
+          points={[i * GRID_SIZE, 0, i * GRID_SIZE, dimensions.height]}
+          stroke={gridColor}
+          strokeWidth={1}
+          opacity={gridOpacity}
+        />
+      );
+    }
+
+    // Horizontal lines
+    for (let i = 0; i < dimensions.height / GRID_SIZE + 10; i++) {
+      lines.push(
+        <Line
+          key={`h-${i}`}
+          points={[0, i * GRID_SIZE, dimensions.width, i * GRID_SIZE]}
+          stroke={gridColor}
+          strokeWidth={1}
+          opacity={gridOpacity}
+        />
+      );
+    }
+
+    return lines;
+  };
+
   const getModeDisplay = () => {
     switch (mode) {
       case 'connect': return '🔗 Connect Mode (C)';
@@ -262,7 +280,7 @@ const Canvas: React.FC = () => {
   return (
     <div
       ref={containerRef}
-      className="flex-1 bg-gray-100 overflow-hidden relative"
+      className="flex-1 bg-white overflow-hidden relative"
       onDrop={handleStageDrop}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -282,6 +300,7 @@ const Canvas: React.FC = () => {
       <div className="absolute bottom-4 left-4 z-10 bg-white px-3 py-2 rounded shadow-sm text-xs text-gray-600">
         <div className="font-semibold mb-1">Shortcuts:</div>
         <div>V - Select | C - Connect | H - Pan | Esc - Cancel</div>
+        <div className="mt-1 text-gray-500">Grid: {GRID_SIZE}px snap</div>
       </div>
 
       {/* Drop feedback */}
@@ -291,7 +310,7 @@ const Canvas: React.FC = () => {
           style={{
             left: dropFeedback.x * viewport.zoom + viewport.x,
             top: dropFeedback.y * viewport.zoom + viewport.y,
-            transform: 'translate(-50%, -50%)'
+            transform: 'translate(0, 0)'
           }}
         />
       )}
@@ -308,31 +327,36 @@ const Canvas: React.FC = () => {
         y={viewport.y}
         draggable={false}
       >
-        {/* Connection layer (below domains) */}
+        {/* Grid layer */}
+        <Layer listening={false}>
+          {renderGrid()}
+        </Layer>
+
+        {/* Connection layer */}
         <Layer>
           {connections.map((connection) => (
             <Connection key={connection.id} connection={connection} />
           ))}
         </Layer>
 
-        {/* Domain layer */}
+        {/* Resource layer - resources rendered directly, no domain boxes */}
         <Layer>
-          {domains.map((domain) => (
-            <DomainBoundary key={domain.id} domain={domain} />
+          {resources.map((resource) => (
+            <ResourceCard key={resource.id} resource={resource} />
           ))}
         </Layer>
 
-        {/* Connection tool layer (for drawing connections) */}
+        {/* Connection tool layer */}
         <ConnectionTool stageRef={stageRef} />
       </Stage>
 
       {/* Help text when empty */}
-      {domains.length === 0 && (
+      {resources.length === 0 && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div className="text-center text-gray-400">
             <p className="text-lg font-medium mb-2">🚀 Start Building Your Infrastructure</p>
             <p className="text-sm">Drag services from the sidebar onto the canvas</p>
-            <p className="text-xs mt-2">Drop to create domains automatically</p>
+            <p className="text-xs mt-2">Resources snap to {GRID_SIZE}px grid</p>
           </div>
         </div>
       )}

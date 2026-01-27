@@ -13,11 +13,13 @@ const ResourceCard: React.FC<ResourceCardProps> = ({ resource }) => {
   const selectedId = useUIStore((state) => state.selectedId);
   const setSelectedId = useUIStore((state) => state.setSelectedId);
   const updateResource = useInfraStore((state) => state.updateResource);
+  const domains = useInfraStore((state) => state.domains);
   const validationState = useValidationStore((state) =>
     state.getValidationState(resource.id)
   );
 
   const isSelected = selectedId === resource.id;
+  const domain = domains.get(resource.domainId);
 
   const getValidationColor = (): string => {
     if (!validationState.isValid && validationState.errors.length > 0) {
@@ -42,6 +44,21 @@ const ResourceCard: React.FC<ResourceCardProps> = ({ resource }) => {
     return null;
   };
 
+  const getDomainColor = (domainType: string): string => {
+    const colors: Record<string, string> = {
+      networking: '#3B82F6',
+      compute: '#10B981',
+      serverless: '#8B5CF6',
+      data: '#F59E0B',
+      storage: '#F97316',
+      messaging: '#EC4899',
+      identity: '#EF4444',
+      observability: '#6366F1',
+      edge: '#14B8A6',
+    };
+    return colors[domainType] || '#6B7280';
+  };
+
   const handleClick = (e: any) => {
     e.cancelBubble = true;
     setSelectedId(resource.id);
@@ -51,8 +68,14 @@ const ResourceCard: React.FC<ResourceCardProps> = ({ resource }) => {
     e.cancelBubble = true;
     const newX = e.target.x();
     const newY = e.target.y();
+
+    // Snap to grid
+    const gridSize = 20;
+    const snappedX = Math.round(newX / gridSize) * gridSize;
+    const snappedY = Math.round(newY / gridSize) * gridSize;
+
     updateResource(resource.id, {
-      position: { x: newX, y: newY }
+      position: { x: snappedX, y: snappedY }
     });
   };
 
@@ -92,14 +115,26 @@ const ResourceCard: React.FC<ResourceCardProps> = ({ resource }) => {
         shadowOpacity={0.3}
       />
 
+      {/* Domain badge (top-left) */}
+      {domain && (
+        <Group x={4} y={4}>
+          <Rect
+            width={12}
+            height={12}
+            fill={getDomainColor(domain.type)}
+            cornerRadius={2}
+          />
+        </Group>
+      )}
+
       {/* Resource type */}
       <Text
         text={shortType}
         fontSize={11}
         fill="#6B7280"
-        x={10}
+        x={20}
         y={12}
-        width={140}
+        width={120}
       />
 
       {/* Resource name */}
@@ -125,9 +160,9 @@ const ResourceCard: React.FC<ResourceCardProps> = ({ resource }) => {
         />
       )}
 
-      {/* Validation badge */}
+      {/* Validation badge (top-right) */}
       {badge && (
-        <Group x={140} y={10}>
+        <Group x={145} y={10}>
           <Circle
             radius={10}
             fill={badge.color}
@@ -154,7 +189,7 @@ const ResourceCard: React.FC<ResourceCardProps> = ({ resource }) => {
         onMouseEnter={(e) => {
           const container = e.target.getStage()?.container();
           if (container) {
-            container.style.cursor = 'pointer';
+            container.style.cursor = 'move';
           }
         }}
         onMouseLeave={(e) => {
