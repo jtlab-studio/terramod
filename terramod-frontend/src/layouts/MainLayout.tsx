@@ -21,6 +21,19 @@ const Header: React.FC<{ onExport: () => void }> = ({ onExport }) => {
         }
     };
 
+    const handleClearCanvas = () => {
+        if (confirm('🗑️ Clear entire canvas?\n\nThis will:\n• Delete all resources\n• Delete all connections\n• Delete all domains\n• Clear localStorage\n\nThis cannot be undone!')) {
+            // Clear store
+            clearGraph();
+
+            // Clear localStorage
+            localStorage.clear();
+
+            // Reload page to ensure clean state
+            window.location.reload();
+        }
+    };
+
     const handleSave = () => {
         const projectData = {
             domains: Array.from(domains.values()),
@@ -30,7 +43,16 @@ const Header: React.FC<{ onExport: () => void }> = ({ onExport }) => {
         };
 
         localStorage.setItem('terramod_project', JSON.stringify(projectData));
-        alert('✅ Project saved to browser storage');
+
+        // Visual feedback
+        const btn = document.getElementById('save-btn');
+        if (btn) {
+            const originalText = btn.textContent;
+            btn.textContent = '✅ Saved!';
+            setTimeout(() => {
+                btn.textContent = originalText;
+            }, 2000);
+        }
     };
 
     const handleLoad = () => {
@@ -83,6 +105,7 @@ const Header: React.FC<{ onExport: () => void }> = ({ onExport }) => {
                     🆕 New
                 </button>
                 <button
+                    id="save-btn"
                     onClick={handleSave}
                     className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded transition-colors text-sm border border-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
                     disabled={resourceCount === 0}
@@ -107,6 +130,18 @@ const Header: React.FC<{ onExport: () => void }> = ({ onExport }) => {
                     className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded transition-colors text-sm border border-gray-700"
                 >
                     📥 Import
+                </button>
+
+                {/* Separator */}
+                <div className="h-6 w-px bg-gray-700 mx-1"></div>
+
+                {/* Clear Canvas Button */}
+                <button
+                    onClick={handleClearCanvas}
+                    className="px-3 py-1.5 bg-red-900 hover:bg-red-800 text-red-200 rounded transition-colors text-sm border border-red-700"
+                    title="Clear entire canvas and localStorage"
+                >
+                    🗑️ Clear All
                 </button>
             </div>
         </header>
