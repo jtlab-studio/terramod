@@ -10,6 +10,7 @@ interface ArgumentFieldProps {
   type: ArgumentType;
   required: boolean;
   onChange: (value: any) => void;
+  onBlur?: () => void;
 }
 
 const ArgumentField: React.FC<ArgumentFieldProps> = ({
@@ -18,58 +19,110 @@ const ArgumentField: React.FC<ArgumentFieldProps> = ({
   type,
   required,
   onChange,
+  onBlur
 }) => {
+  const formatLabel = (fieldName: string): string => {
+    return fieldName
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  };
+
   const renderField = () => {
     switch (type) {
       case 'string':
         return (
           <Input
-            label={name}
+            label={formatLabel(name)}
             value={value || ''}
             onChange={onChange}
+            onBlur={onBlur}
             required={required}
+            placeholder={`Enter ${formatLabel(name).toLowerCase()}`}
           />
         );
+      
       case 'number':
         return (
           <Input
-            label={name}
+            label={formatLabel(name)}
             type="number"
             value={value || ''}
-            onChange={(val) => onChange(Number(val))}
+            onChange={(val) => onChange(val ? Number(val) : '')}
+            onBlur={onBlur}
             required={required}
+            placeholder="0"
           />
         );
+      
       case 'boolean':
         return (
-          <Checkbox
-            label={name}
-            checked={value || false}
-            onChange={onChange}
-          />
+          <div onBlur={onBlur}>
+            <Checkbox
+              label={formatLabel(name)}
+              checked={value || false}
+              onChange={onChange}
+            />
+          </div>
         );
+      
       case 'array':
+        return (
+          <div>
+            <label className="block text-sm font-medium mb-1">
+              {formatLabel(name)}
+              {required && <span className="text-red-600 ml-1">*</span>}
+            </label>
+            <textarea
+              value={Array.isArray(value) ? JSON.stringify(value, null, 2) : '[]'}
+              onChange={(e) => {
+                try {
+                  const parsed = JSON.parse(e.target.value);
+                  onChange(parsed);
+                } catch {
+                  onChange(e.target.value);
+                }
+              }}
+              onBlur={onBlur}
+              rows={4}
+              className="w-full px-3 py-2 border rounded font-mono text-sm"
+              placeholder="[]"
+            />
+          </div>
+        );
+      
       case 'object':
         return (
-          <Input
-            label={name}
-            value={JSON.stringify(value || {})}
-            onChange={(val) => {
-              try {
-                onChange(JSON.parse(val));
-              } catch {
-                onChange(val);
-              }
-            }}
-            required={required}
-          />
+          <div>
+            <label className="block text-sm font-medium mb-1">
+              {formatLabel(name)}
+              {required && <span className="text-red-600 ml-1">*</span>}
+            </label>
+            <textarea
+              value={typeof value === 'object' ? JSON.stringify(value, null, 2) : '{}'}
+              onChange={(e) => {
+                try {
+                  const parsed = JSON.parse(e.target.value);
+                  onChange(parsed);
+                } catch {
+                  onChange(e.target.value);
+                }
+              }}
+              onBlur={onBlur}
+              rows={6}
+              className="w-full px-3 py-2 border rounded font-mono text-sm"
+              placeholder="{}"
+            />
+          </div>
         );
+      
       default:
         return (
           <Input
-            label={name}
-            value={value || ''}
+            label={formatLabel(name)}
+            value={String(value || '')}
             onChange={onChange}
+            onBlur={onBlur}
             required={required}
           />
         );

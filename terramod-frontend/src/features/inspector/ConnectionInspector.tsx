@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useInfraStore } from '../../store/infraStore';
 import Select from '../../components/ui/Select';
+import Button from '../../components/ui/Button';
 import { ConnectionType } from '../../types/connection';
 
 interface ConnectionInspectorProps {
@@ -14,18 +15,36 @@ const ConnectionInspector: React.FC<ConnectionInspectorProps> = ({ connectionId 
   const domains = useInfraStore((state) => state.domains);
   const resources = useInfraStore((state) => state.resources);
 
-  if (!connection) return null;
+  const sourceElement = useMemo(() => {
+    if (!connection) return null;
+    return connection.sourceType === 'domain' 
+      ? domains.get(connection.sourceId)
+      : resources.get(connection.sourceId);
+  }, [connection, domains, resources]);
 
-  const sourceElement = connection.sourceType === 'domain' 
-    ? domains.get(connection.sourceId)
-    : resources.get(connection.sourceId);
+  const targetElement = useMemo(() => {
+    if (!connection) return null;
+    return connection.targetType === 'domain'
+      ? domains.get(connection.targetId)
+      : resources.get(connection.targetId);
+  }, [connection, domains, resources]);
 
-  const targetElement = connection.targetType === 'domain'
-    ? domains.get(connection.targetId)
-    : resources.get(connection.targetId);
+  const availableOutputs = useMemo(() => {
+    if (!sourceElement || !('outputs' in sourceElement)) return [];
+    return sourceElement.outputs.map(o => ({ value: o.name, label: o.name }));
+  }, [sourceElement]);
 
-  const handleTypeChange = (type: ConnectionType) => {
-    updateConnection(connectionId, { connectionType: type });
+  const availableInputs = useMemo(() => {
+    if (!targetElement || !('inputs' in targetElement)) return [];
+    return targetElement.inputs.map(i => ({ value: i.name, label: i.name }));
+  }, [targetElement]);
+
+  if (!connection) {
+    return <div className="p-4 text-gray-500">Connection not found</div>;
+  }
+
+  const handleTypeChange = (type: string) => {
+    updateConnection(connectionId, { connectionType: type as ConnectionType });
   };
 
   const handleOutputChange = (outputName: string) => {
@@ -37,27 +56,54 @@ const ConnectionInspector: React.FC<ConnectionInspectorProps> = ({ connectionId 
   };
 
   const handleDelete = () => {
-    deleteConnection(connectionId);
+    if (confirm('Delete this connection?')) {
+      deleteConnection(connectionId);
+    }
+  };
+
+  const getElementName = (element: any) => {
+    if (!element) return 'Unknown';
+    return 'name' in element ? element.name : element.id;
   };
 
   return (
-    <div className="space-y-4">
-      <h2 className="text-lg font-bold">Connection</h2>
-      
-      <div>
-        <p className="text-sm font-medium mb-1">Source</p>
-        <p className="text-sm text-gray-600">
-          {sourceElement ? ('name' in sourceElement ? sourceElement.name : sourceElement.id) : 'Unknown'}
-        </p>
+    <div className="space-y-4 h-full overflow-y-auto">
+      {/* Header */}
+      <div className="sticky top-0 bg-gray-50 pb-3 border-b border-gray-200">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-lg font-bold text-gray-800">Connection</h2>
+          <button
+            onClick={handleDelete}
+            className="text-red-600 hover:text-red-700 text-sm"
+          >
+            Delete
+          </button>
+        </div>
       </div>
 
+      {/* Source */}
       <div>
-        <p className="text-sm font-medium mb-1">Target</p>
-        <p className="text-sm text-gray-600">
-          {targetElement ? ('name' in targetElement ? targetElement.name : targetElement.id) : 'Unknown'}
-        </p>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Source</label>
+        <div className="p-2 bg-white border border-gray-200 rounded">
+          <div className="font-medium text-sm">{getElementName(sourceElement)}</div>
+          <div className="text-xs text-gray-500 mt-1">
+            Type: {connection.sourceType}
+          </div>
+        </div>
       </div>
 
+      {/* Target */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Target</label>
+        <div className="p-2 bg-white border border-gray-200 rounded">
+          <div className="font-medium text-sm">{getElementName(targetElement)}</div>
+          <div className="text-xs text-gray-500 mt-1">
+            Type: {connection.targetType}
+          </div>
+        </div>
+      </div>
+
+      {/* Connection Type */}
       <Select
         label="Connection Type"
         value={connection.connectionType}
@@ -69,12 +115,39 @@ const ConnectionInspector: React.FC<ConnectionInspectorProps> = ({ connectionId 
         ]}
       />
 
-      <button
-        onClick={handleDelete}
-        className="w-full px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
-      >
-        Delete Connection
-      </button>
+      {/* Output Selection (for domain connections) */}
+      {connection.sourceType === 'domain' && availableOutputs.length > 0 && (
+        <Select
+          label="Source Output"
+          value={connection.outputName || ''}
+          onChange={handleOutputChange}
+          options={[
+            { value: '', label: 'Select output...' },
+            ...availableOutputs
+          ]}
+        />
+      )}
+
+      {/* Input Selection (for domain connections) */}
+      {connection.targetType === 'domain' && availableInputs.length > 0 && (
+        <Select
+          label="Target Input"
+          value={connection.inputName || ''}
+          onChange={handleInputChange}
+          options={[
+            { value: '', label: 'Select input...' },
+            ...availableInputs
+          ]}
+        />
+      )}
+
+      {/* Connection Info */}
+      <div className="p-3 bg-blue-50 border border-blue-200 rounded text-sm">
+        <p className="text-gray-700">
+          This connection represents a {connection.connectionType} relationship 
+          from {getElementName(sourceElement)} to {getElementName(targetElement)}.
+        </p>
+      </div>
     </div>
   );
 };
