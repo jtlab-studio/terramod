@@ -10,11 +10,13 @@ export interface Viewport {
 
 interface UIState {
   selectedId: string | null;
+  activeModuleId: string | null;  // NEW: Currently active module being edited
   mode: InteractionMode;
   viewport: Viewport;
   inspectorOpen: boolean;
   sidebarOpen: boolean;
   setSelectedId: (id: string | null) => void;
+  setActiveModuleId: (id: string | null) => void;  // NEW
   setMode: (mode: InteractionMode) => void;
   updateViewport: (viewport: Partial<Viewport>) => void;
   toggleInspector: () => void;
@@ -23,12 +25,15 @@ interface UIState {
 
 export const useUIStore = create<UIState>((set) => ({
   selectedId: null,
+  activeModuleId: null,
   mode: 'select',
   viewport: { zoom: 1, x: 0, y: 0 },
   inspectorOpen: true,
   sidebarOpen: true,
 
   setSelectedId: (id) => set({ selectedId: id }),
+
+  setActiveModuleId: (id) => set({ activeModuleId: id }),
 
   setMode: (mode) => set({ mode }),
 

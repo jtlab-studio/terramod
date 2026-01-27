@@ -3,11 +3,16 @@ import { persist } from 'zustand/middleware';
 import { Domain } from '../types/domain';
 import { Resource } from '../types/resource';
 import { Connection } from '../types/connection';
+import { DeploymentConfig } from '../types/deployment';
 
 interface InfraState {
   domains: Map<string, Domain>;
   resources: Map<string, Resource>;
   connections: Map<string, Connection>;
+
+  // NEW: Deployment configuration
+  deploymentConfig: DeploymentConfig;
+
   addDomain: (domain: Domain) => void;
   updateDomain: (id: string, updates: Partial<Domain>) => void;
   deleteDomain: (id: string) => void;
@@ -17,6 +22,10 @@ interface InfraState {
   addConnection: (connection: Connection) => void;
   updateConnection: (id: string, updates: Partial<Connection>) => void;
   deleteConnection: (id: string) => void;
+
+  // NEW: Deployment config
+  updateDeploymentConfig: (config: Partial<DeploymentConfig>) => void;
+
   clearGraph: () => void;
   importGraph: (data: { domains: Domain[]; resources: Resource[]; connections: Connection[] }) => void;
   exportGraph: () => { domains: Domain[]; resources: Resource[]; connections: Connection[] };
@@ -28,6 +37,12 @@ export const useInfraStore = create<InfraState>()(
       domains: new Map(),
       resources: new Map(),
       connections: new Map(),
+
+      // Default deployment configuration
+      deploymentConfig: {
+        primaryRegion: 'us-east-1',
+        availabilityZones: ['us-east-1a', 'us-east-1b', 'us-east-1c']
+      },
 
       addDomain: (domain) =>
         set((state) => {
@@ -69,8 +84,8 @@ export const useInfraStore = create<InfraState>()(
           const newConnections = new Map(state.connections);
           for (const [connId, conn] of newConnections.entries()) {
             if (conn.sourceId === id || conn.targetId === id ||
-                domain.resourceIds.includes(conn.sourceId) ||
-                domain.resourceIds.includes(conn.targetId)) {
+              domain.resourceIds.includes(conn.sourceId) ||
+              domain.resourceIds.includes(conn.targetId)) {
               newConnections.delete(connId);
             }
           }
@@ -106,11 +121,11 @@ export const useInfraStore = create<InfraState>()(
             console.warn('Resource not found:', id);
             return state;
           }
-          
+
           const updated = { ...resource, ...updates };
           const newResources = new Map(state.resources);
           newResources.set(id, updated);
-          
+
           console.log('Updated resource:', id, updates);
           return { resources: newResources };
         }),
@@ -176,6 +191,13 @@ export const useInfraStore = create<InfraState>()(
           return { connections: newConnections };
         }),
 
+      updateDeploymentConfig: (config) =>
+        set((state) => {
+          const updated = { ...state.deploymentConfig, ...config };
+          console.log('Updated deployment config:', updated);
+          return { deploymentConfig: updated };
+        }),
+
       clearGraph: () =>
         set(() => {
           console.log('Clearing graph');
@@ -216,7 +238,11 @@ export const useInfraStore = create<InfraState>()(
               ...state,
               domains: new Map(state.domains),
               resources: new Map(state.resources),
-              connections: new Map(state.connections)
+              connections: new Map(state.connections),
+              deploymentConfig: state.deploymentConfig || {
+                primaryRegion: 'us-east-1',
+                availabilityZones: ['us-east-1a', 'us-east-1b', 'us-east-1c']
+              }
             }
           };
         },
@@ -226,7 +252,8 @@ export const useInfraStore = create<InfraState>()(
             state: {
               domains: Array.from(state.domains.entries()),
               resources: Array.from(state.resources.entries()),
-              connections: Array.from(state.connections.entries())
+              connections: Array.from(state.connections.entries()),
+              deploymentConfig: state.deploymentConfig
             }
           };
           localStorage.setItem(name, JSON.stringify(serialized));
