@@ -109,8 +109,8 @@ const ServicePalette: React.FC = () => {
         return (
             <div className="flex items-center justify-center py-8">
                 <div className="text-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
-                    <p className="text-sm text-gray-500">Loading services...</p>
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-400 mx-auto mb-2"></div>
+                    <p className="text-sm text-gray-400">Loading services...</p>
                 </div>
             </div>
         );
@@ -119,12 +119,12 @@ const ServicePalette: React.FC = () => {
     if (error) {
         return (
             <div className="p-4">
-                <div className="bg-red-50 border border-red-200 rounded p-3 text-sm text-red-700">
+                <div className="bg-red-900 border border-red-700 rounded p-3 text-sm text-red-200">
                     <p className="font-medium mb-1">⚠️ Failed to load services</p>
                     <p className="text-xs">{error}</p>
                     <button
                         onClick={loadServices}
-                        className="mt-2 text-xs text-red-600 hover:text-red-800 underline"
+                        className="mt-2 text-xs text-red-300 hover:text-red-100 underline"
                     >
                         🔄 Retry
                     </button>
@@ -142,24 +142,24 @@ const ServicePalette: React.FC = () => {
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search services..."
-                    className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-1.5 text-sm bg-gray-800 border border-gray-700 text-gray-200 placeholder-gray-500 rounded focus:outline-none focus:ring-2 focus:ring-gray-600"
                 />
             </div>
 
             {/* Service count */}
-            <div className="text-xs text-gray-500 mb-2">
+            <div className="text-xs text-gray-400 mb-2">
                 {services.length} services available
             </div>
 
             {/* Service Groups */}
             {Object.entries(filteredGroups).map(([domain, domainServices]) => (
-                <div key={domain} className="border-b border-gray-200 pb-2">
+                <div key={domain} className="border-b border-gray-800 pb-2">
                     <button
                         onClick={() => toggleDomain(domain)}
-                        className="w-full text-left px-2 py-1.5 font-medium text-sm hover:bg-gray-100 rounded flex items-center justify-between group"
+                        className="w-full text-left px-2 py-1.5 font-medium text-sm hover:bg-gray-800 rounded flex items-center justify-between group text-gray-200"
                     >
                         <span className="flex items-center gap-2">
-                            <span className="text-gray-400 text-xs">
+                            <span className="text-gray-500 text-xs">
                                 {expandedDomains.has(domain) ? '▼' : '▶'}
                             </span>
                             <span className="capitalize">{domain}</span>
@@ -175,20 +175,20 @@ const ServicePalette: React.FC = () => {
                                     draggable
                                     onDragStart={(e) => handleDragStart(e, service)}
                                     onDragEnd={handleDragEnd}
-                                    className="px-2 py-1.5 text-sm bg-white border border-gray-200 rounded cursor-move hover:border-blue-400 hover:shadow-sm transition-all"
+                                    className="px-2 py-1.5 text-sm bg-gray-800 border border-gray-700 rounded cursor-move hover:border-gray-600 hover:bg-gray-750 hover:shadow-sm transition-all"
                                     title={`Drag to canvas: ${service.resource_type}`}
                                 >
                                     <div className="flex items-center gap-2">
                                         <span>{getServiceIcon(service.resource_type)}</span>
                                         <div className="flex-1">
-                                            <div className="font-medium text-gray-700">
+                                            <div className="font-medium text-gray-200">
                                                 {service.resource_type.replace('aws_', '').replace(/_/g, ' ')}
                                             </div>
                                             <div className="text-xs text-gray-500 capitalize">
                                                 {service.category}
                                             </div>
                                         </div>
-                                        <span className="text-xs text-gray-400">↗</span>
+                                        <span className="text-xs text-gray-600">↗</span>
                                     </div>
                                 </div>
                             ))}
@@ -204,11 +204,11 @@ const ServicePalette: React.FC = () => {
             )}
 
             {/* Instructions */}
-            <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded text-xs text-gray-600">
-                <p className="font-medium mb-1">💡 How to use:</p>
+            <div className="mt-4 p-3 bg-gray-800 border border-gray-700 rounded text-xs text-gray-400">
+                <p className="font-medium mb-1 text-gray-300">💡 How to use:</p>
                 <ol className="list-decimal list-inside space-y-1">
                     <li>Drag a service to the canvas</li>
-                    <li>Drop to create a new domain</li>
+                    <li>Drop to create a new resource</li>
                     <li>Configure in the inspector</li>
                 </ol>
             </div>

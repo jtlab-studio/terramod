@@ -9,7 +9,7 @@ interface ValidationResults {
 interface ValidationStoreState {
   errors: Map<string, string[]>;
   warnings: Map<string, string[]>;
-  setValidationResults: (results: ValidationResults) => void;
+  setValidationResults: (results: ValidationResults | any) => void;
   clearValidation: (id?: string) => void;
   getValidationState: (id: string) => ValidationState;
 }
@@ -18,11 +18,32 @@ export const useValidationStore = create<ValidationStoreState>((set, get) => ({
   errors: new Map(),
   warnings: new Map(),
 
-  setValidationResults: (results) =>
+  setValidationResults: (results) => {
+    // Handle both Map and plain object formats
+    let errorsMap: Map<string, string[]>;
+    let warningsMap: Map<string, string[]>;
+
+    if (results.errors instanceof Map) {
+      errorsMap = results.errors;
+    } else if (results.errors && typeof results.errors === 'object') {
+      errorsMap = new Map(Object.entries(results.errors));
+    } else {
+      errorsMap = new Map();
+    }
+
+    if (results.warnings instanceof Map) {
+      warningsMap = results.warnings;
+    } else if (results.warnings && typeof results.warnings === 'object') {
+      warningsMap = new Map(Object.entries(results.warnings));
+    } else {
+      warningsMap = new Map();
+    }
+
     set({
-      errors: results.errors,
-      warnings: results.warnings,
-    }),
+      errors: errorsMap,
+      warnings: warningsMap,
+    });
+  },
 
   clearValidation: (id) =>
     set((state) => {
@@ -38,10 +59,15 @@ export const useValidationStore = create<ValidationStoreState>((set, get) => ({
 
   getValidationState: (id) => {
     const state = get();
+
+    // Ensure errors and warnings are Maps
+    const errors = state.errors instanceof Map ? state.errors : new Map();
+    const warnings = state.warnings instanceof Map ? state.warnings : new Map();
+
     return {
-      isValid: !state.errors.has(id) || state.errors.get(id)!.length === 0,
-      errors: state.errors.get(id) || [],
-      warnings: state.warnings.get(id) || [],
+      isValid: !errors.has(id) || errors.get(id)!.length === 0,
+      errors: errors.get(id) || [],
+      warnings: warnings.get(id) || [],
     };
   },
 }));

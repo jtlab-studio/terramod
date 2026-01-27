@@ -6,15 +6,12 @@ import InspectorPanel from '../features/inspector/InspectorPanel';
 import ServicePalette from '../features/sidebar/ServicePalette';
 import DomainList from '../features/sidebar/DomainList';
 import ExportModal from '../features/export/ExportModal';
-import ValidationPanel from '../features/validation/ValidationPanel';
-import { useConnectionMode } from '../features/canvas/ConnectionTool';
 
 const Header: React.FC<{ onExport: () => void }> = ({ onExport }) => {
     const clearGraph = useInfraStore((state) => state.clearGraph);
     const domains = useInfraStore((state) => state.domains);
     const resources = useInfraStore((state) => state.resources);
     const connections = useInfraStore((state) => state.connections);
-    const { isConnecting, startConnecting, stopConnecting } = useConnectionMode();
 
     const handleNew = () => {
         if (domains.size > 0 || resources.size > 0) {
@@ -25,14 +22,13 @@ const Header: React.FC<{ onExport: () => void }> = ({ onExport }) => {
     };
 
     const handleSave = () => {
-        // Save to localStorage
         const projectData = {
             domains: Array.from(domains.values()),
             resources: Array.from(resources.values()),
             connections: Array.from(connections.values()),
             timestamp: new Date().toISOString()
         };
-        
+
         localStorage.setItem('terramod_project', JSON.stringify(projectData));
         alert('✅ Project saved to browser storage');
     };
@@ -44,14 +40,13 @@ const Header: React.FC<{ onExport: () => void }> = ({ onExport }) => {
                 try {
                     const projectData = JSON.parse(saved);
                     clearGraph();
-                    
-                    // Import saved data
+
                     useInfraStore.getState().importGraph({
                         domains: projectData.domains,
                         resources: projectData.resources,
                         connections: projectData.connections
                     });
-                    
+
                     alert('✅ Project loaded');
                 } catch (error) {
                     alert('❌ Failed to load project');
@@ -66,69 +61,50 @@ const Header: React.FC<{ onExport: () => void }> = ({ onExport }) => {
         alert('Import from Terraform coming in Phase 2');
     };
 
-    const toggleConnectionMode = () => {
-        if (isConnecting) {
-            stopConnecting();
-        } else {
-            startConnecting();
-        }
-    };
-
     const resourceCount = resources.size;
     const domainCount = domains.size;
     const connectionCount = connections.size;
 
     return (
-        <header className="h-14 bg-gray-800 text-white flex items-center justify-between px-4">
+        <header className="h-14 bg-gray-900 border-b border-gray-800 text-white flex items-center justify-between px-4">
             <div className="flex items-center gap-4">
-                <h1 className="text-xl font-bold">Terramod</h1>
-                <div className="text-xs text-gray-300">
-                    {domainCount} {domainCount === 1 ? 'domain' : 'domains'} • 
+                <h1 className="text-xl font-bold text-gray-100">Terramod</h1>
+                <div className="text-xs text-gray-400">
+                    {domainCount} {domainCount === 1 ? 'domain' : 'domains'} •
                     {' '}{resourceCount} {resourceCount === 1 ? 'resource' : 'resources'} •
                     {' '}{connectionCount} {connectionCount === 1 ? 'connection' : 'connections'}
                 </div>
             </div>
             <div className="flex items-center gap-2">
-                <button 
+                <button
                     onClick={handleNew}
-                    className="px-3 py-1.5 bg-gray-600 hover:bg-gray-700 text-white rounded transition-colors text-sm"
+                    className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded transition-colors text-sm border border-gray-700"
                 >
                     🆕 New
                 </button>
-                <button 
+                <button
                     onClick={handleSave}
-                    className="px-3 py-1.5 bg-gray-600 hover:bg-gray-700 text-white rounded transition-colors text-sm"
+                    className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded transition-colors text-sm border border-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
                     disabled={resourceCount === 0}
                 >
                     💾 Save
                 </button>
-                <button 
+                <button
                     onClick={handleLoad}
-                    className="px-3 py-1.5 bg-gray-600 hover:bg-gray-700 text-white rounded transition-colors text-sm"
+                    className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded transition-colors text-sm border border-gray-700"
                 >
                     📂 Load
                 </button>
-                <button 
-                    onClick={toggleConnectionMode}
-                    className={`px-3 py-1.5 rounded transition-colors text-sm font-medium ${
-                        isConnecting 
-                            ? 'bg-blue-600 hover:bg-blue-700 text-white' 
-                            : 'bg-gray-600 hover:bg-gray-700 text-white'
-                    }`}
-                    disabled={resourceCount === 0}
-                >
-                    {isConnecting ? '🔗 Connecting...' : '🔗 Connect'}
-                </button>
-                <button 
+                <button
                     onClick={onExport}
-                    className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors font-medium text-sm"
+                    className="px-4 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-100 rounded transition-colors font-medium text-sm border border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
                     disabled={resourceCount === 0}
                 >
                     📦 Export
                 </button>
-                <button 
+                <button
                     onClick={handleImport}
-                    className="px-3 py-1.5 bg-gray-600 hover:bg-gray-700 text-white rounded transition-colors text-sm"
+                    className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded transition-colors text-sm border border-gray-700"
                 >
                     📥 Import
                 </button>
@@ -141,22 +117,22 @@ const Sidebar: React.FC = () => {
     const [activeTab, setActiveTab] = React.useState<'services' | 'domains'>('services');
 
     return (
-        <div className="w-64 bg-gray-50 border-r border-gray-200 flex flex-col">
-            <div className="flex border-b border-gray-200">
+        <div className="w-64 bg-gray-900 border-r border-gray-800 flex flex-col">
+            <div className="flex border-b border-gray-800">
                 <button
                     onClick={() => setActiveTab('services')}
-                    className={`flex-1 px-4 py-2 text-sm font-medium ${activeTab === 'services'
-                            ? 'bg-white border-b-2 border-blue-600 text-blue-600'
-                            : 'text-gray-600 hover:text-gray-800'
+                    className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'services'
+                        ? 'bg-gray-800 border-b-2 border-gray-600 text-gray-200'
+                        : 'text-gray-400 hover:text-gray-300 hover:bg-gray-850'
                         }`}
                 >
                     Services
                 </button>
                 <button
                     onClick={() => setActiveTab('domains')}
-                    className={`flex-1 px-4 py-2 text-sm font-medium ${activeTab === 'domains'
-                            ? 'bg-white border-b-2 border-blue-600 text-blue-600'
-                            : 'text-gray-600 hover:text-gray-800'
+                    className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'domains'
+                        ? 'bg-gray-800 border-b-2 border-gray-600 text-gray-200'
+                        : 'text-gray-400 hover:text-gray-300 hover:bg-gray-850'
                         }`}
                 >
                     Domains
@@ -179,22 +155,20 @@ const MainLayout: React.FC = () => {
     const [exportModalOpen, setExportModalOpen] = useState(false);
 
     return (
-        <div className="flex flex-col h-screen">
+        <div className="flex flex-col h-screen bg-gray-900">
             <Header onExport={() => setExportModalOpen(true)} />
             <div className="flex flex-1 overflow-hidden">
                 {sidebarOpen && <Sidebar />}
-                <div className="flex-1 bg-white relative">
+                <div className="flex-1 bg-gray-900 relative">
                     <Canvas />
-                    {/* Floating validation panel */}
-                    <ValidationPanel />
                 </div>
                 {inspectorOpen && <InspectorPanel />}
             </div>
-            
+
             {/* Export Modal */}
-            <ExportModal 
-                isOpen={exportModalOpen} 
-                onClose={() => setExportModalOpen(false)} 
+            <ExportModal
+                isOpen={exportModalOpen}
+                onClose={() => setExportModalOpen(false)}
             />
         </div>
     );

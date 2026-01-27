@@ -20,7 +20,7 @@ const DomainList: React.FC = () => {
   const getResourceTypes = (domainId: string): string[] => {
     const domain = domains.find((d) => d.id === domainId);
     if (!domain) return [];
-    
+
     const types = new Set<string>();
     domain.resourceIds.forEach(rid => {
       const resource = resources.get(rid);
@@ -38,25 +38,25 @@ const DomainList: React.FC = () => {
 
   const getDomainColor = (type: string): string => {
     const colors: Record<string, string> = {
-      networking: 'bg-blue-100 border-blue-300',
-      compute: 'bg-green-100 border-green-300',
-      serverless: 'bg-purple-100 border-purple-300',
-      data: 'bg-yellow-100 border-yellow-300',
-      storage: 'bg-orange-100 border-orange-300',
-      messaging: 'bg-pink-100 border-pink-300',
-      identity: 'bg-red-100 border-red-300',
-      observability: 'bg-indigo-100 border-indigo-300',
-      edge: 'bg-teal-100 border-teal-300',
+      networking: '#3B82F6',
+      compute: '#10B981',
+      serverless: '#8B5CF6',
+      data: '#F59E0B',
+      storage: '#F97316',
+      messaging: '#EC4899',
+      identity: '#EF4444',
+      observability: '#6366F1',
+      edge: '#14B8A6',
     };
-    return colors[type] || 'bg-gray-100 border-gray-300';
+    return colors[type] || '#6B7280';
   };
 
   return (
     <div className="space-y-2">
       {domains.length === 0 ? (
         <div className="text-center py-8">
-          <p className="text-sm text-gray-500 mb-2">No domains yet</p>
-          <p className="text-xs text-gray-400">
+          <p className="text-sm text-gray-400 mb-2">No domains yet</p>
+          <p className="text-xs text-gray-500">
             Drag services from the palette to create domains
           </p>
         </div>
@@ -66,7 +66,7 @@ const DomainList: React.FC = () => {
             {domains.length} domain{domains.length !== 1 ? 's' : ''} • {' '}
             {Array.from(resources.values()).length} resource{Array.from(resources.values()).length !== 1 ? 's' : ''}
           </div>
-          
+
           {sortedDomains.map((domain) => {
             const resourceCount = getResourceCount(domain.id);
             const resourceTypes = getResourceTypes(domain.id);
@@ -76,18 +76,21 @@ const DomainList: React.FC = () => {
               <div
                 key={domain.id}
                 onClick={() => handleDomainClick(domain.id)}
-                className={`p-2 rounded cursor-pointer transition-all ${
-                  isSelected
-                    ? `${getDomainColor(domain.type)} border-2 shadow-sm`
-                    : 'bg-white border border-gray-200 hover:border-gray-400'
-                }`}
+                className={`p-2 rounded cursor-pointer transition-all ${isSelected
+                    ? 'bg-gray-700 border-2 border-gray-600 shadow-sm'
+                    : 'bg-gray-800 border border-gray-700 hover:border-gray-600 hover:bg-gray-750'
+                  }`}
               >
                 <div className="flex items-start justify-between mb-1">
-                  <div className="font-medium text-sm">{domain.name}</div>
+                  <div className="font-medium text-sm text-gray-200">{domain.name}</div>
                   <div className="text-xs text-gray-500">{resourceCount}</div>
                 </div>
-                
-                <div className="text-xs text-gray-600 mb-1 capitalize">
+
+                <div className="text-xs text-gray-400 mb-1 capitalize flex items-center gap-2">
+                  <span
+                    className="w-2 h-2 rounded-full"
+                    style={{ backgroundColor: getDomainColor(domain.type) }}
+                  />
                   {domain.type}
                 </div>
 
@@ -96,7 +99,7 @@ const DomainList: React.FC = () => {
                     {resourceTypes.slice(0, 3).map((type, idx) => (
                       <span
                         key={idx}
-                        className="text-xs px-1.5 py-0.5 bg-white border border-gray-200 rounded"
+                        className="text-xs px-1.5 py-0.5 bg-gray-900 border border-gray-700 text-gray-400 rounded"
                       >
                         {type}
                       </span>

@@ -14,7 +14,7 @@ const InspectorPanel: React.FC = () => {
 
   if (!inspectorOpen || !selectedId) {
     return (
-      <div className="w-80 bg-gray-50 border-l border-gray-200 p-4">
+      <div className="w-80 bg-gray-900 border-l border-gray-800 p-4">
         <p className="text-gray-500 text-sm">Select an element to configure</p>
       </div>
     );
@@ -34,7 +34,7 @@ const InspectorPanel: React.FC = () => {
   };
 
   return (
-    <div className="w-80 bg-gray-50 border-l border-gray-200 p-4 overflow-y-auto">
+    <div className="w-80 bg-gray-900 border-l border-gray-800 p-4 overflow-y-auto">
       {renderInspector()}
     </div>
   );

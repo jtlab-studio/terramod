@@ -1,16 +1,20 @@
-import React, { useRef, useEffect, useCallback } from 'react';
-import { Stage, Layer, Line } from 'react-konva';
+import React, { useRef, useEffect, useCallback, useState } from 'react';
+import { Stage, Layer, Line, Arrow } from 'react-konva';
 import Konva from 'konva';
 import { useInfraStore } from '../../store/infraStore';
 import { useUIStore } from '../../store/uiStore';
-import { useCanvasInteractions } from './hooks/useCanvasInteractions';
 import { useZoomPan } from './hooks/useZoomPan';
-import { useAutoValidation } from './hooks/useAutoValidation';
 import ResourceCard from './ResourceCard';
-import Connection from './Connection';
-import ConnectionTool from './ConnectionTool';
-import { CANVAS_MIN_WIDTH, CANVAS_PADDING, GRID_SIZE } from '../../config/constants';
+import { CANVAS_MIN_WIDTH, GRID_SIZE } from '../../config/constants';
 import { ServiceDefinition } from '../../api/registry';
+
+interface ConnectionDraft {
+  sourceId: string;
+  startX: number;
+  startY: number;
+  currentX: number;
+  currentY: number;
+}
 
 const Canvas: React.FC = () => {
   const stageRef = useRef<Konva.Stage>(null);
@@ -21,21 +25,17 @@ const Canvas: React.FC = () => {
   const connections = useInfraStore((state) => Array.from(state.connections.values()));
   const addDomain = useInfraStore((state) => state.addDomain);
   const addResource = useInfraStore((state) => state.addResource);
+  const addConnection = useInfraStore((state) => state.addConnection);
 
   const viewport = useUIStore((state) => state.viewport);
   const selectedId = useUIStore((state) => state.selectedId);
   const setSelectedId = useUIStore((state) => state.setSelectedId);
-  const mode = useUIStore((state) => state.mode);
-  const setMode = useUIStore((state) => state.setMode);
 
   const [dimensions, setDimensions] = React.useState({ width: 800, height: 600 });
   const [dropFeedback, setDropFeedback] = React.useState<{ x: number; y: number } | null>(null);
+  const [connectionDraft, setConnectionDraft] = useState<ConnectionDraft | null>(null);
 
   const { handleWheel } = useZoomPan(stageRef);
-  const { handleKeyDown } = useCanvasInteractions();
-
-  // Enable auto-validation
-  useAutoValidation();
 
   // Handle window resize
   useEffect(() => {
@@ -55,18 +55,23 @@ const Canvas: React.FC = () => {
   // Handle keyboard shortcuts
   useEffect(() => {
     const keyHandler = (e: KeyboardEvent) => {
-      if (e.key === 'v' || e.key === 'Escape') {
-        setMode('select');
-      } else if (e.key === 'c') {
-        setMode('connect');
-      } else if (e.key === 'h') {
-        setMode('pan');
+      if (e.key === 'Escape') {
+        setSelectedId(null);
+        setConnectionDraft(null);
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedId) {
+          const resource = resources.find(r => r.id === selectedId);
+          if (resource && confirm(`Delete ${resource.name}?`)) {
+            useInfraStore.getState().deleteResource(selectedId);
+            setSelectedId(null);
+          }
+        }
       }
     };
 
     window.addEventListener('keydown', keyHandler);
     return () => window.removeEventListener('keydown', keyHandler);
-  }, [setMode]);
+  }, [selectedId, resources, setSelectedId]);
 
   const handleStageClick = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
     const clickedOnEmpty = e.target === e.target.getStage();
@@ -75,17 +80,14 @@ const Canvas: React.FC = () => {
     }
   }, [setSelectedId]);
 
-  // Generate unique ID
   const generateId = (prefix: string): string => {
     return `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   };
 
-  // Snap to grid
   const snapToGrid = (value: number): number => {
     return Math.round(value / GRID_SIZE) * GRID_SIZE;
   };
 
-  // Get default arguments for a service
   const getDefaultArguments = (service: ServiceDefinition): Record<string, any> => {
     const defaults: Record<string, any> = {};
 
@@ -128,7 +130,6 @@ const Canvas: React.FC = () => {
     return defaults;
   };
 
-  // Count resources per domain
   const getResourceCountByDomain = (domainType: string): number => {
     return resources.filter(r => {
       const domain = domains.find(d => d.id === r.domainId);
@@ -153,26 +154,21 @@ const Canvas: React.FC = () => {
       const service: ServiceDefinition = JSON.parse(serviceData);
       console.log('✅ Dropped service:', service.resource_type);
 
-      // Get drop position relative to stage (accounting for zoom and pan)
       const stageBox = stage.container().getBoundingClientRect();
       const rawX = (e.clientX - stageBox.left - viewport.x) / viewport.zoom;
       const rawY = (e.clientY - stageBox.top - viewport.y) / viewport.zoom;
 
-      // Snap to grid
       const x = snapToGrid(rawX);
       const y = snapToGrid(rawY);
 
       console.log('📍 Drop position (snapped):', { x, y, viewport });
 
-      // Generate IDs
       const resourceId = generateId(service.resource_type);
       const resourceName = service.resource_type.replace('aws_', '').replace(/_/g, '_');
 
-      // Find or create domain for this service type
       let targetDomain = domains.find(d => d.type === service.domain);
 
       if (!targetDomain) {
-        // Create new domain (logical only, no visual representation)
         console.log('🆕 Creating new domain:', service.domain);
 
         const domainId = generateId(`domain_${service.domain}`);
@@ -185,7 +181,7 @@ const Canvas: React.FC = () => {
           resourceIds: [resourceId],
           inputs: [],
           outputs: [],
-          position: { x: 0, y: 0 }, // Not used for rendering
+          position: { x: 0, y: 0 },
           width: 0,
           height: 0
         };
@@ -193,7 +189,6 @@ const Canvas: React.FC = () => {
         addDomain(newDomain);
         targetDomain = newDomain;
       } else {
-        // Will be added to existing domain via addResource
         console.log('➕ Adding to existing domain:', targetDomain.name);
       }
 
@@ -203,8 +198,8 @@ const Canvas: React.FC = () => {
         domainId: targetDomain.id,
         name: `${resourceName}_${targetDomain.resourceIds.length + 1}`,
         arguments: getDefaultArguments(service),
-        position: { x, y }, // Absolute position on canvas
-        validationState: { isValid: false, errors: [], warnings: [] }
+        position: { x, y },
+        validationState: { isValid: true, errors: [], warnings: [] }
       };
 
       addResource(newResource);
@@ -234,13 +229,70 @@ const Canvas: React.FC = () => {
     setDropFeedback(null);
   }, []);
 
-  // Generate grid lines
+  const handleConnectionStart = useCallback((resourceId: string, x: number, y: number) => {
+    console.log('🔗 Starting connection from:', resourceId);
+    setConnectionDraft({
+      sourceId: resourceId,
+      startX: x,
+      startY: y,
+      currentX: x,
+      currentY: y
+    });
+  }, []);
+
+  const handleConnectionDrag = useCallback((x: number, y: number) => {
+    if (connectionDraft) {
+      setConnectionDraft({
+        ...connectionDraft,
+        currentX: x,
+        currentY: y
+      });
+    }
+  }, [connectionDraft]);
+
+  const handleConnectionEnd = useCallback((targetId: string | null) => {
+    if (!connectionDraft) return;
+
+    if (targetId && targetId !== connectionDraft.sourceId) {
+      console.log('🔗 Completing connection to:', targetId);
+
+      const newConnection = {
+        id: generateId('conn'),
+        sourceId: connectionDraft.sourceId,
+        targetId: targetId,
+        sourceType: 'resource' as const,
+        targetType: 'resource' as const,
+        connectionType: 'dependency' as const,
+        outputName: undefined,
+        inputName: undefined
+      };
+
+      addConnection(newConnection);
+      console.log('✅ Connection created:', newConnection.id);
+    }
+
+    setConnectionDraft(null);
+  }, [connectionDraft, addConnection]);
+
+  const handleStageMouseMove = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
+    if (connectionDraft) {
+      const stage = stageRef.current;
+      if (!stage) return;
+
+      const pos = stage.getPointerPosition();
+      if (pos) {
+        const x = (pos.x - viewport.x) / viewport.zoom;
+        const y = (pos.y - viewport.y) / viewport.zoom;
+        handleConnectionDrag(x, y);
+      }
+    }
+  }, [connectionDraft, viewport, handleConnectionDrag]);
+
   const renderGrid = () => {
     const lines = [];
-    const gridColor = '#E5E7EB'; // gray-200
-    const gridOpacity = 0.5;
+    const gridColor = '#374151'; // gray-700
+    const gridOpacity = 0.3;
 
-    // Vertical lines
     for (let i = 0; i < dimensions.width / GRID_SIZE + 10; i++) {
       lines.push(
         <Line
@@ -253,7 +305,6 @@ const Canvas: React.FC = () => {
       );
     }
 
-    // Horizontal lines
     for (let i = 0; i < dimensions.height / GRID_SIZE + 10; i++) {
       lines.push(
         <Line
@@ -269,44 +320,68 @@ const Canvas: React.FC = () => {
     return lines;
   };
 
-  const getModeDisplay = () => {
-    switch (mode) {
-      case 'connect': return '🔗 Connect Mode (C)';
-      case 'pan': return '✋ Pan Mode (H)';
-      default: return '👆 Select Mode (V)';
-    }
+  const renderConnections = () => {
+    return connections.map((connection) => {
+      const sourceResource = resources.find(r => r.id === connection.sourceId);
+      const targetResource = resources.find(r => r.id === connection.targetId);
+
+      if (!sourceResource || !targetResource) return null;
+
+      const isSelected = selectedId === connection.id;
+
+      const startX = sourceResource.position.x + 160;
+      const startY = sourceResource.position.y + 40;
+      const endX = targetResource.position.x;
+      const endY = targetResource.position.y + 40;
+
+      return (
+        <Arrow
+          key={connection.id}
+          points={[startX, startY, endX, endY]}
+          stroke={isSelected ? '#D1D5DB' : '#6B7280'} // gray-300 : gray-500
+          strokeWidth={isSelected ? 3 : 2}
+          fill={isSelected ? '#D1D5DB' : '#6B7280'}
+          onClick={() => setSelectedId(connection.id)}
+          onMouseEnter={(e) => {
+            const container = e.target.getStage()?.container();
+            if (container) container.style.cursor = 'pointer';
+          }}
+          onMouseLeave={(e) => {
+            const container = e.target.getStage()?.container();
+            if (container) container.style.cursor = 'default';
+          }}
+        />
+      );
+    });
   };
 
   return (
     <div
       ref={containerRef}
-      className="flex-1 bg-white overflow-hidden relative"
+      className="flex-1 bg-gray-900 overflow-hidden relative"
       onDrop={handleStageDrop}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
     >
-      {/* Mode indicator */}
-      <div className={`absolute top-4 left-4 z-10 px-3 py-2 rounded shadow-sm text-sm font-medium ${mode === 'connect' ? 'bg-blue-600 text-white' : 'bg-white text-gray-800'
-        }`}>
-        {getModeDisplay()}
-      </div>
-
       {/* Zoom indicator */}
-      <div className="absolute top-4 right-4 z-10 bg-white px-3 py-2 rounded shadow-sm text-sm">
+      <div className="absolute top-4 right-4 z-10 bg-gray-800 border border-gray-700 px-3 py-2 rounded shadow-lg text-sm text-gray-300">
         Zoom: {Math.round(viewport.zoom * 100)}%
       </div>
 
       {/* Keyboard shortcuts */}
-      <div className="absolute bottom-4 left-4 z-10 bg-white px-3 py-2 rounded shadow-sm text-xs text-gray-600">
-        <div className="font-semibold mb-1">Shortcuts:</div>
-        <div>V - Select | C - Connect | H - Pan | Esc - Cancel</div>
-        <div className="mt-1 text-gray-500">Grid: {GRID_SIZE}px snap</div>
+      <div className="absolute bottom-4 left-4 z-10 bg-gray-800 border border-gray-700 px-3 py-2 rounded shadow-lg text-xs text-gray-400">
+        <div className="font-semibold mb-1 text-gray-300">💡 Tips:</div>
+        <div>• Click resource to configure</div>
+        <div>• Drag resource to move</div>
+        <div>• Drag connection dot to connect</div>
+        <div>• Del/Backspace to delete</div>
+        <div>• Esc to deselect</div>
       </div>
 
       {/* Drop feedback */}
       {dropFeedback && (
         <div
-          className="absolute z-10 w-40 h-20 border-2 border-dashed border-blue-500 bg-blue-50 opacity-50 rounded pointer-events-none"
+          className="absolute z-10 w-40 h-20 border-2 border-dashed border-gray-500 bg-gray-500 opacity-20 rounded pointer-events-none"
           style={{
             left: dropFeedback.x * viewport.zoom + viewport.x,
             top: dropFeedback.y * viewport.zoom + viewport.y,
@@ -321,39 +396,53 @@ const Canvas: React.FC = () => {
         height={dimensions.height}
         onWheel={handleWheel}
         onClick={handleStageClick}
+        onMouseMove={handleStageMouseMove}
+        onMouseUp={() => handleConnectionEnd(null)}
         scaleX={viewport.zoom}
         scaleY={viewport.zoom}
         x={viewport.x}
         y={viewport.y}
         draggable={false}
       >
-        {/* Grid layer */}
         <Layer listening={false}>
           {renderGrid()}
         </Layer>
 
-        {/* Connection layer */}
         <Layer>
-          {connections.map((connection) => (
-            <Connection key={connection.id} connection={connection} />
-          ))}
+          {renderConnections()}
+
+          {connectionDraft && (
+            <Line
+              points={[
+                connectionDraft.startX,
+                connectionDraft.startY,
+                connectionDraft.currentX,
+                connectionDraft.currentY
+              ]}
+              stroke="#9CA3AF" // gray-400
+              strokeWidth={2}
+              dash={[5, 5]}
+              opacity={0.7}
+            />
+          )}
         </Layer>
 
-        {/* Resource layer - resources rendered directly, no domain boxes */}
         <Layer>
           {resources.map((resource) => (
-            <ResourceCard key={resource.id} resource={resource} />
+            <ResourceCard
+              key={resource.id}
+              resource={resource}
+              onConnectionStart={handleConnectionStart}
+              onConnectionEnd={handleConnectionEnd}
+              isConnectionDragging={!!connectionDraft}
+            />
           ))}
         </Layer>
-
-        {/* Connection tool layer */}
-        <ConnectionTool stageRef={stageRef} />
       </Stage>
 
-      {/* Help text when empty */}
       {resources.length === 0 && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="text-center text-gray-400">
+          <div className="text-center text-gray-500">
             <p className="text-lg font-medium mb-2">🚀 Start Building Your Infrastructure</p>
             <p className="text-sm">Drag services from the sidebar onto the canvas</p>
             <p className="text-xs mt-2">Resources snap to {GRID_SIZE}px grid</p>
