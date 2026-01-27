@@ -13,18 +13,33 @@ interface DomainBoundaryProps {
 const DomainBoundary: React.FC<DomainBoundaryProps> = ({ domain }) => {
   const selectedId = useUIStore((state) => state.selectedId);
   const setSelectedId = useUIStore((state) => state.setSelectedId);
-  const resources = useInfraStore((state) => 
+  const updateDomain = useInfraStore((state) => state.updateDomain);
+  const resources = useInfraStore((state) =>
     domain.resourceIds.map(id => state.resources.get(id)).filter(Boolean)
   );
 
   const isSelected = selectedId === domain.id;
 
-  const handleClick = () => {
+  const handleClick = (e: any) => {
+    e.cancelBubble = true;
     setSelectedId(domain.id);
   };
 
+  const handleDragEnd = (e: any) => {
+    const newX = e.target.x();
+    const newY = e.target.y();
+    updateDomain(domain.id, {
+      position: { x: newX, y: newY }
+    });
+  };
+
   return (
-    <Group x={domain.position.x} y={domain.position.y}>
+    <Group
+      x={domain.position.x}
+      y={domain.position.y}
+      draggable={true}
+      onDragEnd={handleDragEnd}
+    >
       <Rect
         width={domain.width}
         height={domain.height}
