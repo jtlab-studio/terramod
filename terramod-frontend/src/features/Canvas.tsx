@@ -15,12 +15,12 @@ import { ServiceDefinition } from '../../api/registry';
 const Canvas: React.FC = () => {
   const stageRef = useRef<Konva.Stage>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-
+  
   const domains = useInfraStore((state) => Array.from(state.domains.values()));
   const connections = useInfraStore((state) => Array.from(state.connections.values()));
   const addDomain = useInfraStore((state) => state.addDomain);
   const addResource = useInfraStore((state) => state.addResource);
-
+  
   const viewport = useUIStore((state) => state.viewport);
   const selectedId = useUIStore((state) => state.selectedId);
   const setSelectedId = useUIStore((state) => state.setSelectedId);
@@ -32,7 +32,7 @@ const Canvas: React.FC = () => {
 
   const { handleWheel } = useZoomPan(stageRef);
   const { handleKeyDown } = useCanvasInteractions();
-
+  
   // Enable auto-validation
   useAutoValidation();
 
@@ -82,7 +82,7 @@ const Canvas: React.FC = () => {
   // Get default arguments for a service
   const getDefaultArguments = (service: ServiceDefinition): Record<string, any> => {
     const defaults: Record<string, any> = {};
-
+    
     // Set common defaults based on resource type
     if (service.resource_type === 'aws_vpc') {
       defaults.cidr_block = '10.0.0.0/16';
@@ -121,19 +121,19 @@ const Canvas: React.FC = () => {
     } else if (service.resource_type === 'aws_cloudwatch_log_group') {
       defaults.retention_in_days = 7;
     }
-
+    
     return defaults;
   };
 
   // Find if point is inside any domain
   const findDomainAtPoint = (x: number, y: number) => {
     for (const domain of domains) {
-      const inDomain =
-        x >= domain.position.x &&
+      const inDomain = 
+        x >= domain.position.x && 
         x <= domain.position.x + domain.width &&
-        y >= domain.position.y &&
+        y >= domain.position.y && 
         y <= domain.position.y + domain.height;
-
+      
       if (inDomain) {
         return domain;
       }
@@ -144,7 +144,7 @@ const Canvas: React.FC = () => {
   const handleStageDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setDropFeedback(null);
-
+    
     const stage = stageRef.current;
     if (!stage) return;
 
@@ -157,7 +157,7 @@ const Canvas: React.FC = () => {
 
       const service: ServiceDefinition = JSON.parse(serviceData);
       console.log('✅ Dropped service:', service.resource_type);
-
+      
       // Get drop position relative to stage (accounting for zoom and pan)
       const stageBox = stage.container().getBoundingClientRect();
       const x = (e.clientX - stageBox.left - viewport.x) / viewport.zoom;
@@ -175,7 +175,7 @@ const Canvas: React.FC = () => {
       if (targetDomain) {
         // Add to existing domain
         console.log('➕ Adding to existing domain:', targetDomain.name);
-
+        
         const newResource = {
           id: resourceId,
           type: service.resource_type,
@@ -188,17 +188,17 @@ const Canvas: React.FC = () => {
           },
           validationState: { isValid: false, errors: [], warnings: [] }
         };
-
+        
         addResource(newResource);
         setSelectedId(resourceId);
       } else {
         // Create new domain
         console.log('🆕 Creating new domain:', service.domain);
-
+        
         const domainId = generateId(`domain_${service.domain}`);
         const domainX = Math.max(CANVAS_PADDING, x - 150);
         const domainY = Math.max(CANVAS_PADDING, y - 100);
-
+        
         const newDomain = {
           id: domainId,
           name: service.domain,
@@ -210,7 +210,7 @@ const Canvas: React.FC = () => {
           width: 400,
           height: 300
         };
-
+        
         const newResource = {
           id: resourceId,
           type: service.resource_type,
@@ -220,11 +220,11 @@ const Canvas: React.FC = () => {
           position: { x: 50, y: 80 },
           validationState: { isValid: false, errors: [], warnings: [] }
         };
-
+        
         addDomain(newDomain);
         addResource(newResource);
         setSelectedId(resourceId);
-
+        
         console.log('✅ Created domain and resource');
       }
     } catch (error) {
@@ -235,7 +235,7 @@ const Canvas: React.FC = () => {
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
-
+    
     // Show drop feedback
     const stage = stageRef.current;
     if (stage) {
@@ -260,7 +260,7 @@ const Canvas: React.FC = () => {
   };
 
   return (
-    <div
+    <div 
       ref={containerRef}
       className="flex-1 bg-gray-100 overflow-hidden relative"
       onDrop={handleStageDrop}
@@ -268,8 +268,9 @@ const Canvas: React.FC = () => {
       onDragLeave={handleDragLeave}
     >
       {/* Mode indicator */}
-      <div className={`absolute top-4 left-4 z-10 px-3 py-2 rounded shadow-sm text-sm font-medium ${mode === 'connect' ? 'bg-blue-600 text-white' : 'bg-white text-gray-800'
-        }`}>
+      <div className={`absolute top-4 left-4 z-10 px-3 py-2 rounded shadow-sm text-sm font-medium ${
+        mode === 'connect' ? 'bg-blue-600 text-white' : 'bg-white text-gray-800'
+      }`}>
         {getModeDisplay()}
       </div>
 
@@ -286,7 +287,7 @@ const Canvas: React.FC = () => {
 
       {/* Drop feedback */}
       {dropFeedback && (
-        <div
+        <div 
           className="absolute z-10 w-40 h-20 border-2 border-dashed border-blue-500 bg-blue-50 opacity-50 rounded pointer-events-none"
           style={{
             left: dropFeedback.x * viewport.zoom + viewport.x,

@@ -12,17 +12,17 @@ export const useAutoValidation = () => {
   const domains = useInfraStore((state) => Array.from(state.domains.values()));
   const resources = useInfraStore((state) => Array.from(state.resources.values()));
   const connections = useInfraStore((state) => Array.from(state.connections.values()));
-
+  
   const setValidationResults = useValidationStore((state) => state.setValidationResults);
   const clearValidation = useValidationStore((state) => state.clearValidation);
-
+  
   const isValidating = useRef(false);
-  const validationTimer = useRef<NodeJS.Timeout | null>(null);
+  const validationTimer = useRef<number | null>(null);
 
   useEffect(() => {
     // Clear existing timer
-    if (validationTimer.current) {
-      clearTimeout(validationTimer.current);
+    if (validationTimer.current !== null) {
+      window.clearTimeout(validationTimer.current);
     }
 
     // If graph is empty, clear validation
@@ -32,7 +32,7 @@ export const useAutoValidation = () => {
     }
 
     // Debounce validation
-    validationTimer.current = setTimeout(async () => {
+    validationTimer.current = window.setTimeout(async () => {
       if (isValidating.current) {
         console.log('⏸️ Validation already running, skipping');
         return;
@@ -54,13 +54,13 @@ export const useAutoValidation = () => {
           // Convert API format to store format
           const errors = new Map(Object.entries(result.value.errors || {}));
           const warnings = new Map(Object.entries(result.value.warnings || {}));
-
+          
           setValidationResults({ errors, warnings });
-
+          
           const errorCount = Object.keys(result.value.errors || {}).length;
           const warningCount = Object.keys(result.value.warnings || {}).length;
           const blockingCount = Object.keys(result.value.blocking_errors || {}).length;
-
+          
           console.log(`✅ Validation complete: ${errorCount} errors, ${warningCount} warnings, ${blockingCount} blocking`);
         } else {
           console.error('❌ Validation failed:', result.error);
@@ -73,8 +73,8 @@ export const useAutoValidation = () => {
     }, VALIDATION_DEBOUNCE_MS);
 
     return () => {
-      if (validationTimer.current) {
-        clearTimeout(validationTimer.current);
+      if (validationTimer.current !== null) {
+        window.clearTimeout(validationTimer.current);
       }
     };
   }, [domains, resources, connections, setValidationResults, clearValidation]);

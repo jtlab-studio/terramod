@@ -49,11 +49,11 @@ const ServicePalette: React.FC = () => {
   const handleDragStart = (e: React.DragEvent, service: ServiceDefinition) => {
     e.dataTransfer.effectAllowed = 'copy';
     e.dataTransfer.setData('service', JSON.stringify(service));
-
+    
     // Add visual feedback
     const target = e.currentTarget as HTMLElement;
     target.style.opacity = '0.5';
-
+    
     console.log('🎯 Drag started:', service.resource_type);
   };
 
@@ -76,10 +76,10 @@ const ServicePalette: React.FC = () => {
   // Filter based on search
   const filteredGroups = useMemo(() => {
     if (!searchQuery) return groupedServices;
-
+    
     const result: Record<string, ServiceDefinition[]> = {};
     Object.entries(groupedServices).forEach(([domain, domainServices]) => {
-      const filtered = domainServices.filter(s =>
+      const filtered = domainServices.filter(s => 
         s.resource_type.toLowerCase().includes(searchQuery.toLowerCase())
       );
       if (filtered.length > 0) {
@@ -166,7 +166,7 @@ const ServicePalette: React.FC = () => {
               <span className="text-xs text-gray-500">({domainServices.length})</span>
             </span>
           </button>
-
+          
           {expandedDomains.has(domain) && (
             <div className="ml-4 mt-1 space-y-1">
               {domainServices.map((service) => (

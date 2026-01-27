@@ -11,7 +11,7 @@ interface ResourceCardProps {
 const ResourceCard: React.FC<ResourceCardProps> = ({ resource }) => {
   const selectedId = useUIStore((state) => state.selectedId);
   const setSelectedId = useUIStore((state) => state.setSelectedId);
-  const validationState = useValidationStore((state) =>
+  const validationState = useValidationStore((state) => 
     state.getValidationState(resource.id)
   );
 
@@ -48,14 +48,14 @@ const ResourceCard: React.FC<ResourceCardProps> = ({ resource }) => {
   const borderColor = getValidationColor();
 
   // Truncate long names
-  const displayName = resource.name.length > 18
-    ? resource.name.substring(0, 15) + '...'
+  const displayName = resource.name.length > 18 
+    ? resource.name.substring(0, 15) + '...' 
     : resource.name;
 
   // Truncate resource type
   const displayType = resource.type.replace('aws_', '').replace(/_/g, ' ');
-  const shortType = displayType.length > 20
-    ? displayType.substring(0, 17) + '...'
+  const shortType = displayType.length > 20 
+    ? displayType.substring(0, 17) + '...' 
     : displayType;
 
   return (
@@ -74,7 +74,7 @@ const ResourceCard: React.FC<ResourceCardProps> = ({ resource }) => {
         shadowOffset={{ x: 0, y: 2 }}
         shadowOpacity={0.3}
       />
-
+      
       {/* Resource type */}
       <Text
         text={shortType}
@@ -84,7 +84,7 @@ const ResourceCard: React.FC<ResourceCardProps> = ({ resource }) => {
         y={12}
         width={140}
       />
-
+      
       {/* Resource name */}
       <Text
         text={displayName}
@@ -107,7 +107,7 @@ const ResourceCard: React.FC<ResourceCardProps> = ({ resource }) => {
           width={140}
         />
       )}
-
+      
       {/* Validation badge */}
       {badge && (
         <Group x={140} y={10}>

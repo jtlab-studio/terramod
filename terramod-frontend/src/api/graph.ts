@@ -12,6 +12,8 @@ export interface InfrastructureGraph {
 export interface ValidationResults {
     errors: Record<string, string[]>;
     warnings: Record<string, string[]>;
+    blocking_errors?: Record<string, string[]>; // Optional for compatibility
+    can_export?: boolean;
 }
 
 export async function validateGraph(graph: InfrastructureGraph) {
