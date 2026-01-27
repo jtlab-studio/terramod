@@ -30,17 +30,17 @@ const ValidationPanel: React.FC = () => {
   const getElementName = (elementId: string): string => {
     const resource = resources.get(elementId);
     if (resource) return resource.name;
-    
+
     const domain = domains.get(elementId);
     if (domain) return domain.name;
-    
+
     return elementId;
   };
 
   return (
     <div className="fixed bottom-4 right-4 bg-white border border-gray-300 rounded-lg shadow-lg max-w-md z-20">
       {/* Header */}
-      <div 
+      <div
         className="flex items-center justify-between p-3 border-b border-gray-200 cursor-pointer hover:bg-gray-50"
         onClick={() => setIsExpanded(!isExpanded)}
       >

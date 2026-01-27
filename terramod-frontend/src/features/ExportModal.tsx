@@ -35,7 +35,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => {
       };
 
       const result = await validateGraph(graph);
-      
+
       if (!result.ok) {
         setError(result.error.message);
         return;
@@ -70,7 +70,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => {
       };
 
       const result = await generateTerraform(graph);
-      
+
       if (!result.ok) {
         setError(result.error.message);
         return;
@@ -94,7 +94,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => {
       };
 
       const result = await exportProject(graph, 'zip');
-      
+
       if (!result.ok) {
         setError(result.error.message);
         return;
@@ -112,7 +112,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => {
       document.body.removeChild(a);
 
       setStep('download');
-      
+
       // Auto-close after success
       setTimeout(() => {
         onClose();
@@ -165,7 +165,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => {
             <p className="text-sm text-red-700 mb-3">
               Your infrastructure has validation errors that must be fixed before export.
             </p>
-            
+
             <div className="space-y-2 max-h-60 overflow-y-auto">
               {Object.entries(blockingErrors).map(([elementId, errors]) => (
                 <div key={elementId} className="bg-white border border-red-300 rounded p-2">
@@ -285,13 +285,13 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => {
       <Button variant="secondary" onClick={handleClose}>
         Close
       </Button>
-      
+
       {step === 'validate' && validationResults && !(validationResults.blocking_errors && Object.keys(validationResults.blocking_errors).length > 0) && (
         <Button variant="primary" onClick={() => setStep('preview')} disabled={isGenerating}>
           Continue to Preview
         </Button>
       )}
-      
+
       {step === 'preview' && (
         <Button variant="primary" onClick={handleDownload}>
           Download ZIP

@@ -1,81 +1,29 @@
-import { useEffect, useRef } from 'react';
-import { useInfraStore } from '../../../store/infraStore';
-import { useValidationStore } from '../../../store/validationStore';
-import { validateGraph } from '../../../api/graph';
-import { VALIDATION_DEBOUNCE_MS } from '../../../config/constants';
+import { useCallback } from 'react';
+import { useUIStore } from '../../../store/uiStore';
 
-/**
- * Auto-validation hook - runs validation automatically when graph changes
- * Debounces to avoid excessive API calls
- */
-export const useAutoValidation = () => {
-  const domains = useInfraStore((state) => Array.from(state.domains.values()));
-  const resources = useInfraStore((state) => Array.from(state.resources.values()));
-  const connections = useInfraStore((state) => Array.from(state.connections.values()));
+export const useCanvasInteractions = () => {
+  const mode = useUIStore((state) => state.mode);
+  const setMode = useUIStore((state) => state.setMode);
 
-  const setValidationResults = useValidationStore((state) => state.setValidationResults);
-  const clearValidation = useValidationStore((state) => state.clearValidation);
-
-  const isValidating = useRef(false);
-  const validationTimer = useRef<NodeJS.Timeout | null>(null);
-
-  useEffect(() => {
-    // Clear existing timer
-    if (validationTimer.current) {
-      clearTimeout(validationTimer.current);
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'v' || e.key === 'Escape') {
+      setMode('select');
+    } else if (e.key === 'c') {
+      setMode('connect');
+    } else if (e.key === 'h') {
+      setMode('pan');
     }
+  }, [setMode]);
 
-    // If graph is empty, clear validation
-    if (domains.length === 0 && resources.length === 0) {
-      clearValidation();
-      return;
-    }
+  const switchToSelectMode = () => setMode('select');
+  const switchToConnectMode = () => setMode('connect');
+  const switchToPanMode = () => setMode('pan');
 
-    // Debounce validation
-    validationTimer.current = setTimeout(async () => {
-      if (isValidating.current) {
-        console.log('⏸️ Validation already running, skipping');
-        return;
-      }
-
-      isValidating.current = true;
-      console.log('🔍 Running auto-validation...');
-
-      try {
-        const graph = {
-          domains,
-          resources,
-          connections
-        };
-
-        const result = await validateGraph(graph);
-
-        if (result.ok) {
-          // Convert API format to store format
-          const errors = new Map(Object.entries(result.value.errors || {}));
-          const warnings = new Map(Object.entries(result.value.warnings || {}));
-
-          setValidationResults({ errors, warnings });
-
-          const errorCount = Object.keys(result.value.errors || {}).length;
-          const warningCount = Object.keys(result.value.warnings || {}).length;
-          const blockingCount = Object.keys(result.value.blocking_errors || {}).length;
-
-          console.log(`✅ Validation complete: ${errorCount} errors, ${warningCount} warnings, ${blockingCount} blocking`);
-        } else {
-          console.error('❌ Validation failed:', result.error);
-        }
-      } catch (error) {
-        console.error('❌ Validation error:', error);
-      } finally {
-        isValidating.current = false;
-      }
-    }, VALIDATION_DEBOUNCE_MS);
-
-    return () => {
-      if (validationTimer.current) {
-        clearTimeout(validationTimer.current);
-      }
-    };
-  }, [domains, resources, connections, setValidationResults, clearValidation]);
+  return {
+    mode,
+    handleKeyDown,
+    switchToSelectMode,
+    switchToConnectMode,
+    switchToPanMode,
+  };
 };

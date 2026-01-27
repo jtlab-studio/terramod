@@ -1,191 +1,115 @@
-import React, { useState, useCallback } from 'react';
-import { Layer, Line, Circle, Group } from 'react-konva';
+import React from 'react';
+import { useValidationStore } from '../../store/validationStore';
 import { useInfraStore } from '../../store/infraStore';
-import { useUIStore } from '../../store/uiStore';
-import type { NodeType, ConnectionType } from '../../types/connection';
 
-interface ConnectionToolProps {
-    stageRef: React.RefObject<any>;
-}
-
-interface ConnectionStart {
-    id: string;
-    type: NodeType;
-    x: number;
-    y: number;
-}
-
-const ConnectionTool: React.FC<ConnectionToolProps> = ({ stageRef }) => {
-    const [connectionStart, setConnectionStart] = useState<ConnectionStart | null>(null);
-    const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
-
-    const mode = useUIStore((state) => state.mode);
-    const viewport = useUIStore((state) => state.viewport);
-    const addConnection = useInfraStore((state) => state.addConnection);
+const ValidationPanel: React.FC = () => {
+    const errors = useValidationStore((state) => state.errors);
+    const warnings = useValidationStore((state) => state.warnings);
     const domains = useInfraStore((state) => state.domains);
     const resources = useInfraStore((state) => state.resources);
 
-    const generateId = (prefix: string): string => {
-        return `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    };
+    const totalErrors = Array.from(errors.values()).reduce((sum, arr) => sum + arr.length, 0);
+    const totalWarnings = Array.from(warnings.values()).reduce((sum, arr) => sum + arr.length, 0);
 
-    const handleStartConnection = useCallback((elementId: string, elementType: NodeType, x: number, y: number) => {
-        if (mode !== 'connect') return;
+    const [isExpanded, setIsExpanded] = React.useState(true);
 
-        console.log('🔗 Starting connection from:', elementId);
-        setConnectionStart({ id: elementId, type: elementType, x, y });
-    }, [mode]);
-
-    const handleMouseMove = useCallback((e: any) => {
-        if (!connectionStart || mode !== 'connect') return;
-
-        const stage = stageRef.current;
-        if (!stage) return;
-
-        const pos = stage.getPointerPosition();
-        if (pos) {
-            const x = (pos.x - viewport.x) / viewport.zoom;
-            const y = (pos.y - viewport.y) / viewport.zoom;
-            setMousePos({ x, y });
-        }
-    }, [connectionStart, mode, viewport, stageRef]);
-
-    const handleEndConnection = useCallback((targetId: string, targetType: NodeType) => {
-        if (!connectionStart || mode !== 'connect') return;
-        if (connectionStart.id === targetId) {
-            // Can't connect to self
-            setConnectionStart(null);
-            setMousePos(null);
-            return;
-        }
-
-        console.log('🔗 Completing connection to:', targetId);
-
-        // Determine connection type
-        let connectionType: ConnectionType = 'data';
-
-        // If connecting domain to domain, it's usually implicit
-        if (connectionStart.type === 'domain' && targetType === 'domain') {
-            connectionType = 'implicit';
-        }
-        // If connecting resource to resource, check if it's a reference
-        else if (connectionStart.type === 'resource' && targetType === 'resource') {
-            connectionType = 'dependency';
-        }
-
-        const newConnection = {
-            id: generateId('conn'),
-            sourceId: connectionStart.id,
-            targetId: targetId,
-            sourceType: connectionStart.type,
-            targetType: targetType,
-            connectionType: connectionType,
-            outputName: undefined,
-            inputName: undefined
-        };
-
-        addConnection(newConnection);
-        console.log('✅ Connection created:', newConnection.id);
-
-        // Reset
-        setConnectionStart(null);
-        setMousePos(null);
-    }, [connectionStart, mode, addConnection]);
-
-    const handleCancel = useCallback(() => {
-        setConnectionStart(null);
-        setMousePos(null);
-    }, []);
-
-    // Expose handlers via context or props
-    React.useEffect(() => {
-        if (mode !== 'connect') {
-            handleCancel();
-        }
-    }, [mode, handleCancel]);
-
-    // Render connection line being drawn
-    const renderDrawingLine = () => {
-        if (!connectionStart || !mousePos || mode !== 'connect') return null;
-
+    if (totalErrors === 0 && totalWarnings === 0) {
         return (
-            <Line
-                points={[connectionStart.x, connectionStart.y, mousePos.x, mousePos.y]}
-                stroke="#3B82F6"
-                strokeWidth={2}
-                dash={[5, 5]}
-                opacity={0.7}
-            />
+            <div className="fixed bottom-4 right-4 bg-green-50 border border-green-200 rounded-lg shadow-lg p-3 max-w-sm z-20">
+                <div className="flex items-center gap-2">
+                    <span className="text-green-600 text-xl">✓</span>
+                    <div>
+                        <div className="font-semibold text-green-800 text-sm">All Valid</div>
+                        <div className="text-xs text-green-600">No validation issues</div>
+                    </div>
+                </div>
+            </div>
         );
+    }
+
+    const getElementName = (elementId: string): string => {
+        const resource = resources.get(elementId);
+        if (resource) return resource.name;
+
+        const domain = domains.get(elementId);
+        if (domain) return domain.name;
+
+        return elementId;
     };
 
     return (
-        <Layer onMouseMove={handleMouseMove} onClick={handleCancel}>
-            {renderDrawingLine()}
+        <div className="fixed bottom-4 right-4 bg-white border border-gray-300 rounded-lg shadow-lg max-w-md z-20">
+            {/* Header */}
+            <div
+                className="flex items-center justify-between p-3 border-b border-gray-200 cursor-pointer hover:bg-gray-50"
+                onClick={() => setIsExpanded(!isExpanded)}
+            >
+                <div className="flex items-center gap-3">
+                    {totalErrors > 0 && (
+                        <div className="flex items-center gap-1">
+                            <span className="text-red-600 text-lg">✕</span>
+                            <span className="font-semibold text-red-800">{totalErrors}</span>
+                        </div>
+                    )}
+                    {totalWarnings > 0 && (
+                        <div className="flex items-center gap-1">
+                            <span className="text-yellow-600 text-lg">⚠</span>
+                            <span className="font-semibold text-yellow-800">{totalWarnings}</span>
+                        </div>
+                    )}
+                    <span className="text-sm text-gray-600">Validation Issues</span>
+                </div>
+                <span className="text-gray-400 text-sm">{isExpanded ? '▼' : '▶'}</span>
+            </div>
 
-            {/* Render connection ports on resources when in connect mode */}
-            {mode === 'connect' && (
-                <>
-                    {Array.from(resources.values()).map((resource) => {
-                        const domain = domains.get(resource.domainId);
-                        if (!domain) return null;
+            {/* Content */}
+            {isExpanded && (
+                <div className="max-h-80 overflow-y-auto">
+                    {/* Errors */}
+                    {totalErrors > 0 && (
+                        <div className="p-3 border-b border-gray-200">
+                            <div className="font-semibold text-sm text-red-800 mb-2">Errors</div>
+                            <div className="space-y-2">
+                                {Array.from(errors.entries()).map(([elementId, errorList]) => (
+                                    <div key={elementId} className="bg-red-50 border border-red-200 rounded p-2">
+                                        <div className="font-medium text-xs text-red-900 mb-1">
+                                            {getElementName(elementId)}
+                                        </div>
+                                        <ul className="list-disc list-inside text-xs text-red-700 space-y-1">
+                                            {errorList.map((error, idx) => (
+                                                <li key={idx}>{error}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
-                        // Calculate absolute position
-                        const absX = domain.position.x + resource.position.x + 160; // Right edge
-                        const absY = domain.position.y + resource.position.y + 40; // Center
-
-                        return (
-                            <Group key={`port-${resource.id}`}>
-                                <Circle
-                                    x={absX}
-                                    y={absY}
-                                    radius={8}
-                                    fill={connectionStart?.id === resource.id ? '#3B82F6' : '#10B981'}
-                                    stroke="#FFFFFF"
-                                    strokeWidth={2}
-                                    onClick={(e) => {
-                                        e.cancelBubble = true;
-                                        if (!connectionStart) {
-                                            handleStartConnection(resource.id, 'resource', absX, absY);
-                                        } else {
-                                            handleEndConnection(resource.id, 'resource');
-                                        }
-                                    }}
-                                    onMouseEnter={(e) => {
-                                        const container = e.target.getStage()?.container();
-                                        if (container) {
-                                            container.style.cursor = 'crosshair';
-                                        }
-                                    }}
-                                    onMouseLeave={(e) => {
-                                        const container = e.target.getStage()?.container();
-                                        if (container) {
-                                            container.style.cursor = 'default';
-                                        }
-                                    }}
-                                />
-                            </Group>
-                        );
-                    })}
-                </>
+                    {/* Warnings */}
+                    {totalWarnings > 0 && (
+                        <div className="p-3">
+                            <div className="font-semibold text-sm text-yellow-800 mb-2">Warnings</div>
+                            <div className="space-y-2">
+                                {Array.from(warnings.entries()).map(([elementId, warningList]) => (
+                                    <div key={elementId} className="bg-yellow-50 border border-yellow-200 rounded p-2">
+                                        <div className="font-medium text-xs text-yellow-900 mb-1">
+                                            {getElementName(elementId)}
+                                        </div>
+                                        <ul className="list-disc list-inside text-xs text-yellow-700 space-y-1">
+                                            {warningList.map((warning, idx) => (
+                                                <li key={idx}>{warning}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
             )}
-        </Layer>
+        </div>
     );
 };
 
-export default ConnectionTool;
-
-// Hook to manage connection mode
-export const useConnectionMode = () => {
-    const mode = useUIStore((state) => state.mode);
-    const setMode = useUIStore((state) => state.setMode);
-
-    const startConnecting = () => setMode('connect');
-    const stopConnecting = () => setMode('select');
-
-    return {
-        isConnecting: mode === 'connect',
-        startConnecting,
-        stopConnecting
-    };
-};
+export default ValidationPanel;
