@@ -1,0 +1,8 @@
+# Module outputs
+
+{% for output in outputs %}
+output "{{ output.name }}" {
+  value       = {{ output.name }}
+  description = "{{ output.description or output.name }}"
+}
+{% endfor %}

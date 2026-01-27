@@ -1,0 +1,330 @@
+# Terramod AWS Services Registry
+# Top 20 AWS Services for Phase 1
+
+services:
+  - aws_vpc:
+      domain: networking
+      category: core
+      required_inputs:
+        - cidr_block
+      optional_inputs:
+        - enable_dns_hostnames
+        - enable_dns_support
+        - tags
+      exports:
+        - id
+        - cidr_block
+      allowed_consumers:
+        - aws_subnet
+        - aws_security_group
+        - aws_internet_gateway
+
+  - aws_subnet:
+      domain: networking
+      category: core
+      required_inputs:
+        - vpc_id
+        - cidr_block
+        - availability_zone
+      optional_inputs:
+        - map_public_ip_on_launch
+        - tags
+      exports:
+        - id
+        - cidr_block
+        - availability_zone
+      allowed_consumers:
+        - aws_instance
+        - aws_lb
+        - aws_db_subnet_group
+
+  - aws_internet_gateway:
+      domain: networking
+      category: core
+      required_inputs:
+        - vpc_id
+      optional_inputs:
+        - tags
+      exports:
+        - id
+      allowed_consumers:
+        - aws_route_table
+
+  - aws_nat_gateway:
+      domain: networking
+      category: core
+      required_inputs:
+        - allocation_id
+        - subnet_id
+      optional_inputs:
+        - tags
+      exports:
+        - id
+      allowed_consumers:
+        - aws_route_table
+
+  - aws_route_table:
+      domain: networking
+      category: core
+      required_inputs:
+        - vpc_id
+      optional_inputs:
+        - route
+        - tags
+      exports:
+        - id
+      allowed_consumers:
+        - aws_route_table_association
+
+  - aws_security_group:
+      domain: networking
+      category: core
+      required_inputs:
+        - vpc_id
+        - name
+      optional_inputs:
+        - description
+        - ingress
+        - egress
+        - tags
+      exports:
+        - id
+      allowed_consumers:
+        - aws_instance
+        - aws_lb
+        - aws_db_instance
+
+  - aws_instance:
+      domain: compute
+      category: core
+      required_inputs:
+        - ami
+        - instance_type
+      optional_inputs:
+        - subnet_id
+        - vpc_security_group_ids
+        - key_name
+        - user_data
+        - tags
+      exports:
+        - id
+        - private_ip
+        - public_ip
+      allowed_consumers: []
+
+  - aws_autoscaling_group:
+      domain: compute
+      category: core
+      required_inputs:
+        - max_size
+        - min_size
+        - vpc_zone_identifier
+      optional_inputs:
+        - launch_template
+        - desired_capacity
+        - health_check_type
+        - tags
+      exports:
+        - id
+        - name
+      allowed_consumers: []
+
+  - aws_ecs_cluster:
+      domain: compute
+      category: core
+      required_inputs:
+        - name
+      optional_inputs:
+        - capacity_providers
+        - tags
+      exports:
+        - id
+        - arn
+      allowed_consumers:
+        - aws_ecs_service
+
+  - aws_eks_cluster:
+      domain: compute
+      category: core
+      required_inputs:
+        - name
+        - role_arn
+        - vpc_config
+      optional_inputs:
+        - version
+        - tags
+      exports:
+        - id
+        - endpoint
+        - certificate_authority
+      allowed_consumers:
+        - aws_eks_node_group
+
+  - aws_lambda_function:
+      domain: serverless
+      category: core
+      required_inputs:
+        - function_name
+        - role
+        - handler
+        - runtime
+      optional_inputs:
+        - vpc_config
+        - environment
+        - memory_size
+        - timeout
+        - tags
+      exports:
+        - arn
+        - invoke_arn
+      allowed_consumers:
+        - aws_api_gateway_integration
+
+  - aws_api_gateway_rest_api:
+      domain: serverless
+      category: core
+      required_inputs:
+        - name
+      optional_inputs:
+        - description
+        - endpoint_configuration
+        - tags
+      exports:
+        - id
+        - execution_arn
+      allowed_consumers:
+        - aws_api_gateway_resource
+
+  - aws_db_instance:
+      domain: data
+      category: core
+      required_inputs:
+        - allocated_storage
+        - engine
+        - instance_class
+        - username
+        - password
+      optional_inputs:
+        - db_subnet_group_name
+        - vpc_security_group_ids
+        - multi_az
+        - backup_retention_period
+        - tags
+      exports:
+        - id
+        - endpoint
+        - address
+      allowed_consumers: []
+
+  - aws_dynamodb_table:
+      domain: data
+      category: core
+      required_inputs:
+        - name
+        - hash_key
+      optional_inputs:
+        - range_key
+        - attribute
+        - billing_mode
+        - read_capacity
+        - write_capacity
+        - tags
+      exports:
+        - id
+        - arn
+      allowed_consumers: []
+
+  - aws_s3_bucket:
+      domain: storage
+      category: core
+      required_inputs:
+        - bucket
+      optional_inputs:
+        - acl
+        - versioning
+        - tags
+      exports:
+        - id
+        - arn
+        - bucket_domain_name
+      allowed_consumers: []
+
+  - aws_sqs_queue:
+      domain: messaging
+      category: core
+      required_inputs:
+        - name
+      optional_inputs:
+        - delay_seconds
+        - message_retention_seconds
+        - visibility_timeout_seconds
+        - tags
+      exports:
+        - id
+        - arn
+        - url
+      allowed_consumers:
+        - aws_lambda_event_source_mapping
+
+  - aws_sns_topic:
+      domain: messaging
+      category: core
+      required_inputs:
+        - name
+      optional_inputs:
+        - display_name
+        - tags
+      exports:
+        - id
+        - arn
+      allowed_consumers:
+        - aws_sns_topic_subscription
+
+  - aws_iam_role:
+      domain: identity
+      category: core
+      required_inputs:
+        - name
+        - assume_role_policy
+      optional_inputs:
+        - description
+        - tags
+      exports:
+        - arn
+        - name
+      allowed_consumers:
+        - aws_lambda_function
+        - aws_ecs_task_definition
+        - aws_eks_cluster
+
+  - aws_cloudwatch_log_group:
+      domain: observability
+      category: core
+      required_inputs:
+        - name
+      optional_inputs:
+        - retention_in_days
+        - tags
+      exports:
+        - arn
+        - name
+      allowed_consumers:
+        - aws_lambda_function
+
+  - aws_lb:
+      domain: edge
+      category: core
+      required_inputs:
+        - name
+        - load_balancer_type
+        - subnets
+      optional_inputs:
+        - security_groups
+        - enable_deletion_protection
+        - tags
+      exports:
+        - id
+        - arn
+        - dns_name
+      allowed_consumers:
+        - aws_lb_target_group

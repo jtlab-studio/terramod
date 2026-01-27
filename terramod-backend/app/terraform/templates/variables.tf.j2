@@ -1,0 +1,13 @@
+# Module variables
+
+{% for input in inputs %}
+variable "{{ input.name }}" {
+  type        = {{ input.type }}
+  {% if input.required %}
+  description = "{{ input.description or input.name }}"
+  {% else %}
+  description = "{{ input.description or input.name }}"
+  default     = null
+  {% endif %}
+}
+{% endfor %}

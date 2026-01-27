@@ -1,0 +1,9 @@
+# {{ domain.name }} module
+
+{% for resource in resources %}
+resource "{{ resource.type }}" "{{ resource.name }}" {
+  {% for arg_name, arg_value in resource.arguments.items() %}
+  {{ arg_name }} = {{ arg_value | to_hcl }}
+  {% endfor %}
+}
+{% endfor %}
