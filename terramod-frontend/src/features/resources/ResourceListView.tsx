@@ -99,45 +99,43 @@ const ResourceListView: React.FC = () => {
             <div
                 key={resource.id}
                 onClick={() => setSelectedId(resource.id)}
-                className={`group relative p-2 rounded-lg backdrop-blur-sm cursor-pointer transition-all duration-200 ${isSelected
+                className={`group relative p-1.5 rounded-lg backdrop-blur-sm cursor-pointer transition-all duration-200 w-28 ${isSelected
                     ? 'bg-violet-500/10 border border-violet-500/50 shadow-lg shadow-violet-500/10'
                     : 'bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20'
                     }`}
             >
-                <div className="flex items-center justify-between gap-1.5">
-                    <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                        <div className="text-base flex-shrink-0">{getResourceIcon(resource.type)}</div>
-                        <div className="flex-1 min-w-0">
-                            <h3 className="font-medium text-white truncate text-xs">{resource.name}</h3>
-                            <div className="flex items-center gap-1 mt-0.5">
-                                <span className={`px-1 py-0.5 rounded text-[10px] font-medium border ${getEnvironmentColor(env)}`}>
-                                    {env.slice(0, 3).toUpperCase()}
-                                </span>
-                                {az && (
-                                    <span className="px-1 py-0.5 rounded text-[10px] font-medium bg-violet-500/10 text-violet-300 border border-violet-500/20">
-                                        {az.split('-').pop()?.toUpperCase()}
-                                    </span>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            if (confirm(`Delete "${resource.name}"?`)) {
-                                deleteResource(resource.id);
-                                if (selectedId === resource.id) {
-                                    setSelectedId(null);
+                <div className="flex flex-col gap-1">
+                    <div className="flex items-start justify-between gap-1">
+                        <div className="text-sm flex-shrink-0">{getResourceIcon(resource.type)}</div>
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                if (confirm(`Delete "${resource.name}"?`)) {
+                                    deleteResource(resource.id);
+                                    if (selectedId === resource.id) {
+                                        setSelectedId(null);
+                                    }
                                 }
-                            }
-                        }}
-                        className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-all duration-200 opacity-0 group-hover:opacity-100"
-                        title="Delete"
-                    >
-                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                    </button>
+                            }}
+                            className="flex-shrink-0 w-4 h-4 flex items-center justify-center rounded text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-all duration-200 opacity-0 group-hover:opacity-100"
+                            title="Delete"
+                        >
+                            <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    </div>
+                    <h3 className="font-medium text-white truncate text-[11px] leading-tight">{resource.name}</h3>
+                    <div className="flex items-center gap-1 flex-wrap">
+                        <span className={`px-1 py-0.5 rounded text-[9px] font-medium border leading-none ${getEnvironmentColor(env)}`}>
+                            {env.slice(0, 3).toUpperCase()}
+                        </span>
+                        {az && (
+                            <span className="px-1 py-0.5 rounded text-[9px] font-medium bg-violet-500/10 text-violet-300 border border-violet-500/20 leading-none">
+                                {az.split('-').pop()?.toUpperCase()}
+                            </span>
+                        )}
+                    </div>
                 </div>
             </div>
         );
@@ -161,58 +159,56 @@ const ResourceListView: React.FC = () => {
         }
 
         return (
-            <div className="space-y-8">
+            <div className="space-y-6">
                 {/* Group by Environment */}
                 {environments.map((env) => (
                     <div key={env}>
-                        <div className="sticky top-0 z-10 backdrop-blur-xl bg-slate-900/50 py-3 mb-4 -mx-6 px-6 border-b border-white/5">
-                            <div className="flex items-center gap-3">
-                                <div className={`px-4 py-2 rounded-xl border ${getEnvironmentColor(env)}`}>
-                                    <span className="font-bold uppercase text-sm">{env}</span>
+                        <div className="sticky top-0 z-10 backdrop-blur-xl bg-slate-900/50 py-2 mb-3 -mx-6 px-6 border-b border-white/5">
+                            <div className="flex items-center gap-2">
+                                <div className={`px-3 py-1 rounded-lg border ${getEnvironmentColor(env)}`}>
+                                    <span className="font-bold uppercase text-xs">{env}</span>
                                 </div>
-                                <div className="text-sm text-slate-400">
+                                <div className="text-xs text-slate-500">
                                     {Object.values(resourcesByEnvAndDomain[env] || {}).flat().length} resources
                                 </div>
                             </div>
                         </div>
 
-                        {/* Group by Domain within Environment */}
-                        {Object.entries(resourcesByEnvAndDomain[env] || {}).map(([domainType, domainResources]) => (
-                            <div key={`${env}-${domainType}`} className="mb-6">
-                                <div className="flex items-center gap-3 mb-3">
-                                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500/20 to-purple-600/20 border border-violet-500/30 flex items-center justify-center">
-                                        <span className="text-lg">{getCategoryIcon(domainType as DomainType)}</span>
-                                    </div>
-                                    <div>
-                                        <h4 className="text-sm font-semibold text-white">
-                                            {getCategoryLabel(domainType as DomainType)}
+                        {/* Intelligent row packing - domains flow together, sharing rows naturally */}
+                        <div className="flex flex-wrap gap-3">
+                            {Object.entries(resourcesByEnvAndDomain[env] || {}).map(([domainType, domainResources]) => (
+                                <div key={`${env}-${domainType}`} className="flex-shrink-0">
+                                    {/* Domain header inline with cards */}
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-violet-500/20 to-purple-600/20 border border-violet-500/30 flex items-center justify-center">
+                                            <span className="text-sm">{getCategoryIcon(domainType as DomainType)}</span>
+                                        </div>
+                                        <h4 className="text-xs font-semibold text-white">
+                                            {getCategoryLabel(domainType as DomainType)} ({domainResources.length})
                                         </h4>
-                                        <p className="text-xs text-slate-500">
-                                            {domainResources.length} {domainResources.length === 1 ? 'resource' : 'resources'}
-                                        </p>
+                                    </div>
+
+                                    {/* Cards flow horizontally within domain group */}
+                                    <div className="flex flex-wrap gap-2">
+                                        {domainResources.map(renderResourceCard)}
                                     </div>
                                 </div>
-
-                                {/* 5 COLUMNS - maximum compactness */}
-                                <div className="grid grid-cols-5 gap-2">
-                                    {domainResources.map(renderResourceCard)}
-                                </div>
-                            </div>
-                        ))}
+                            ))}
+                        </div>
                     </div>
                 ))}
 
                 {/* Summary Cards */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8 pt-8 border-t border-white/5">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6 pt-6 border-t border-white/5">
                     {Object.entries(resourcesByDomain).map(([domainType, domainResources]) => (
                         <button
                             key={domainType}
                             onClick={() => setActiveTab(domainType as DomainType)}
-                            className="p-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all"
+                            className="p-3 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all"
                         >
-                            <div className="text-2xl mb-2">{getCategoryIcon(domainType as DomainType)}</div>
-                            <div className="text-sm font-medium text-white">{getCategoryLabel(domainType as DomainType)}</div>
-                            <div className="text-xs text-slate-400 mt-1">{domainResources.length} resources</div>
+                            <div className="text-xl mb-1">{getCategoryIcon(domainType as DomainType)}</div>
+                            <div className="text-xs font-medium text-white">{getCategoryLabel(domainType as DomainType)}</div>
+                            <div className="text-[10px] text-slate-400 mt-0.5">{domainResources.length} resources</div>
                         </button>
                     ))}
                 </div>
@@ -248,23 +244,23 @@ const ResourceListView: React.FC = () => {
         });
 
         return (
-            <div className="space-y-8">
+            <div className="space-y-6">
                 {Object.entries(resourcesByEnv).sort(([a], [b]) => {
                     const order = { dev: 1, staging: 2, prod: 3 };
                     return ((order as any)[a] || 99) - ((order as any)[b] || 99);
                 }).map(([env, envResources]) => (
                     <div key={env}>
-                        <div className="flex items-center gap-3 mb-4">
-                            <div className={`px-4 py-2 rounded-xl border ${getEnvironmentColor(env)}`}>
-                                <span className="font-bold uppercase text-sm">{env}</span>
+                        <div className="flex items-center gap-2 mb-3">
+                            <div className={`px-3 py-1 rounded-lg border ${getEnvironmentColor(env)}`}>
+                                <span className="font-bold uppercase text-xs">{env}</span>
                             </div>
-                            <div className="text-sm text-slate-400">
+                            <div className="text-xs text-slate-500">
                                 {envResources.length} {envResources.length === 1 ? 'resource' : 'resources'}
                             </div>
                         </div>
 
-                        {/* 5 COLUMNS - maximum compactness */}
-                        <div className="grid grid-cols-5 gap-2">
+                        {/* Cards flow and wrap naturally */}
+                        <div className="flex flex-wrap gap-2">
                             {envResources.map(renderResourceCard)}
                         </div>
                     </div>
