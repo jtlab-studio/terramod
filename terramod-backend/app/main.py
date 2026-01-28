@@ -52,6 +52,16 @@ app.include_router(graph.router, prefix="/api/v1/graph", tags=["graph"])
 app.include_router(terraform.router, prefix="/api/v1/terraform", tags=["terraform"])
 app.include_router(registry.router, prefix="/api/v1/registry", tags=["registry"])
 
+# Load cost estimation routes
+try:
+    from app.api.routes import cost
+    app.include_router(cost.router, prefix="/api/v1/cost", tags=["cost"])
+    logger.info("Cost estimation routes loaded successfully")
+except ImportError as e:
+    logger.warning(f"Could not load cost routes: {e}")
+except Exception as e:
+    logger.error(f"Error loading cost routes: {e}")
+
 # Optional: Try to load IR routes if they exist
 try:
     from app.api.routes import ir_routes

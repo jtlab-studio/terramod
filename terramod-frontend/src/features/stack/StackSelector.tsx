@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useInfraStore } from '../../store/infraStore';
-import { useUIStore } from '../../store/uiStore';
 import { STACK_TEMPLATES, StackTemplate } from '../../config/stackTemplates';
 import Button from '../../components/ui/Button';
 
@@ -111,10 +110,7 @@ const StackSelector: React.FC<StackSelectorProps> = ({ onStackSelected }) => {
                 {isSelected && (
                     <Button
                         variant="primary"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            handleStartWithStack(template.id);
-                        }}
+                        onClick={() => handleStartWithStack(template.id)}
                         className="w-full"
                     >
                         Start with {template.name}

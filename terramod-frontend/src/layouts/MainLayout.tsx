@@ -19,8 +19,6 @@ const Header: React.FC<{
     const domains = useInfraStore((state) => state.domains);
     const resources = useInfraStore((state) => state.resources);
     const connections = useInfraStore((state) => state.connections);
-    const setActiveModuleId = useUIStore((state) => state.setActiveModuleId);
-    const setSelectedId = useUIStore((state) => state.setSelectedId);
 
     const currentStackType = useInfraStore((state) => state.currentStackType);
 

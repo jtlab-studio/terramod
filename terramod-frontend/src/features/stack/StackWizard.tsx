@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useInfraStore } from '../../store/infraStore';
-import { useUIStore } from '../../store/uiStore';
-import { STACK_TEMPLATES, StackTemplate, getStackTemplate } from '../../config/stackTemplates';
+import { getStackTemplate } from '../../config/stackTemplates';
 import { estimateCosts, CostEstimateReport } from '../../api/cost';
 import Button from '../../components/ui/Button';
+import { DeploymentStrategy } from '../../types/deployment';
 
 interface StackWizardProps {
     stackId: string;
@@ -396,8 +396,8 @@ function getDefaultArgumentsForResource(resourceType: string, environment: strin
     return defaults;
 }
 
-function getDefaultDeploymentStrategy(resourceType: string): string {
-    const strategies: Record<string, string> = {
+function getDefaultDeploymentStrategy(resourceType: string): DeploymentStrategy {
+    const strategies: Record<string, DeploymentStrategy> = {
         'aws_vpc': 'single',
         'aws_subnet': 'per-az',
         'aws_nat_gateway': 'per-az',

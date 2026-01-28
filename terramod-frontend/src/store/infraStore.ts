@@ -10,8 +10,11 @@ interface InfraState {
   resources: Map<string, Resource>;
   connections: Map<string, Connection>;
 
-  // NEW: Deployment configuration
+  // Deployment configuration
   deploymentConfig: DeploymentConfig;
+
+  // NEW: Track which stack template is being used
+  currentStackType: string | null;
 
   addDomain: (domain: Domain) => void;
   updateDomain: (id: string, updates: Partial<Domain>) => void;
@@ -23,8 +26,11 @@ interface InfraState {
   updateConnection: (id: string, updates: Partial<Connection>) => void;
   deleteConnection: (id: string) => void;
 
-  // NEW: Deployment config
+  // Deployment config
   updateDeploymentConfig: (config: Partial<DeploymentConfig>) => void;
+
+  // NEW: Stack type management
+  setCurrentStackType: (stackType: string | null) => void;
 
   clearGraph: () => void;
   importGraph: (data: { domains: Domain[]; resources: Resource[]; connections: Connection[] }) => void;
@@ -43,6 +49,9 @@ export const useInfraStore = create<InfraState>()(
         primaryRegion: 'us-east-1',
         availabilityZones: ['us-east-1a', 'us-east-1b', 'us-east-1c']
       },
+
+      // NEW: Current stack type
+      currentStackType: null,
 
       addDomain: (domain) =>
         set((state) => {
@@ -198,6 +207,13 @@ export const useInfraStore = create<InfraState>()(
           return { deploymentConfig: updated };
         }),
 
+      // NEW: Set current stack type
+      setCurrentStackType: (stackType) =>
+        set(() => {
+          console.log('Set current stack type:', stackType);
+          return { currentStackType: stackType };
+        }),
+
       clearGraph: () =>
         set(() => {
           console.log('Clearing graph');
@@ -242,7 +258,8 @@ export const useInfraStore = create<InfraState>()(
               deploymentConfig: state.deploymentConfig || {
                 primaryRegion: 'us-east-1',
                 availabilityZones: ['us-east-1a', 'us-east-1b', 'us-east-1c']
-              }
+              },
+              currentStackType: state.currentStackType || null // NEW
             }
           };
         },
@@ -253,7 +270,8 @@ export const useInfraStore = create<InfraState>()(
               domains: Array.from(state.domains.entries()),
               resources: Array.from(state.resources.entries()),
               connections: Array.from(state.connections.entries()),
-              deploymentConfig: state.deploymentConfig
+              deploymentConfig: state.deploymentConfig,
+              currentStackType: state.currentStackType // NEW
             }
           };
           localStorage.setItem(name, JSON.stringify(serialized));
