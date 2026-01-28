@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
 import { useUIStore } from '../store/uiStore';
 import { useInfraStore } from '../store/infraStore';
-import ModulePanel from '../features/modules/ModulePanel';
-import ModuleEditor from '../features/modules/ModuleEditor';
+import LeftPanel from '../features/modules/LeftPanel';
+import ModuleContent from '../features/modules/ModuleContent';
 import DeploymentConfigBar from '../features/modules/DeploymentConfigBar';
-import InspectorPanel from '../features/inspector/InspectorPanel';
-import ServicePalette from '../features/sidebar/ServicePalette';
+import ResourceInspector from '../features/inspector/ResourceInspector';
 import ExportModal from '../features/export/ExportModal';
 
 const Header: React.FC<{ onExport: () => void }> = ({ onExport }) => {
@@ -13,24 +12,25 @@ const Header: React.FC<{ onExport: () => void }> = ({ onExport }) => {
     const domains = useInfraStore((state) => state.domains);
     const resources = useInfraStore((state) => state.resources);
     const connections = useInfraStore((state) => state.connections);
+    const setActiveModuleId = useUIStore((state) => state.setActiveModuleId);
+    const setSelectedId = useUIStore((state) => state.setSelectedId);
 
     const handleNew = () => {
         if (domains.size > 0 || resources.size > 0) {
             if (confirm('Clear current project? This cannot be undone.')) {
                 clearGraph();
+                setActiveModuleId(null);
+                setSelectedId(null);
             }
         }
     };
 
     const handleClearCanvas = () => {
-        if (confirm('🗑️ Clear entire canvas?\n\nThis will:\n• Delete all resources\n• Delete all connections\n• Delete all domains\n• Clear localStorage\n\nThis cannot be undone!')) {
-            // Clear store
+        if (confirm('🗑️ Clear entire canvas?\n\nThis will:\n• Delete all resources\n• Delete all modules\n• Clear localStorage\n\nThis cannot be undone!')) {
             clearGraph();
-
-            // Clear localStorage
+            setActiveModuleId(null);
+            setSelectedId(null);
             localStorage.clear();
-
-            // Reload page to ensure clean state
             window.location.reload();
         }
     };
@@ -45,7 +45,6 @@ const Header: React.FC<{ onExport: () => void }> = ({ onExport }) => {
 
         localStorage.setItem('terramod_project', JSON.stringify(projectData));
 
-        // Visual feedback
         const btn = document.getElementById('save-btn');
         if (btn) {
             const originalText = btn.textContent;
@@ -86,7 +85,6 @@ const Header: React.FC<{ onExport: () => void }> = ({ onExport }) => {
 
     const resourceCount = resources.size;
     const domainCount = domains.size;
-    const connectionCount = connections.size;
 
     return (
         <header className="h-14 bg-gray-900 border-b border-gray-800 text-white flex items-center justify-between px-4">
@@ -94,8 +92,7 @@ const Header: React.FC<{ onExport: () => void }> = ({ onExport }) => {
                 <h1 className="text-xl font-bold text-gray-100">Terramod</h1>
                 <div className="text-xs text-gray-400">
                     {domainCount} {domainCount === 1 ? 'module' : 'modules'} •
-                    {' '}{resourceCount} {resourceCount === 1 ? 'resource' : 'resources'} •
-                    {' '}{connectionCount} {connectionCount === 1 ? 'connection' : 'connections'}
+                    {' '}{resourceCount} {resourceCount === 1 ? 'resource' : 'resources'}
                 </div>
             </div>
             <div className="flex items-center gap-2">
@@ -133,10 +130,8 @@ const Header: React.FC<{ onExport: () => void }> = ({ onExport }) => {
                     📥 Import
                 </button>
 
-                {/* Separator */}
                 <div className="h-6 w-px bg-gray-700 mx-1"></div>
 
-                {/* Clear Canvas Button */}
                 <button
                     onClick={handleClearCanvas}
                     className="px-3 py-1.5 bg-red-900 hover:bg-red-800 text-red-200 rounded transition-colors text-sm border border-red-700"
@@ -150,7 +145,7 @@ const Header: React.FC<{ onExport: () => void }> = ({ onExport }) => {
 };
 
 const MainLayout: React.FC = () => {
-    const inspectorOpen = useUIStore((state) => state.inspectorOpen);
+    const selectedId = useUIStore((state) => state.selectedId);
     const [exportModalOpen, setExportModalOpen] = useState(false);
 
     return (
@@ -158,20 +153,23 @@ const MainLayout: React.FC = () => {
             <Header onExport={() => setExportModalOpen(true)} />
 
             <div className="flex flex-1 overflow-hidden">
-                {/* Left: Module Panel */}
-                <ModulePanel />
+                {/* Left: Module Gallery / Resource Palette */}
+                <LeftPanel />
 
-                {/* Center: Module Editor */}
-                <ModuleEditor />
+                {/* Center: Module Content */}
+                <ModuleContent />
 
-                {/* Right: Service Palette / Inspector */}
+                {/* Right: Resource Inspector */}
                 <div className="w-80 bg-gray-900 border-l border-gray-800 flex flex-col">
-                    {inspectorOpen ? (
-                        <InspectorPanel />
-                    ) : (
+                    {selectedId ? (
                         <div className="p-4 overflow-y-auto">
-                            <h2 className="text-lg font-bold text-gray-100 mb-4">Services</h2>
-                            <ServicePalette />
+                            <ResourceInspector resourceId={selectedId} />
+                        </div>
+                    ) : (
+                        <div className="flex items-center justify-center h-full p-4">
+                            <div className="text-center text-gray-500">
+                                <p className="text-sm">Select a resource to configure</p>
+                            </div>
                         </div>
                     )}
                 </div>
