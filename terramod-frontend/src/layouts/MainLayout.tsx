@@ -6,8 +6,15 @@ import ModuleContent from '../features/modules/ModuleContent';
 import DeploymentConfigBar from '../features/modules/DeploymentConfigBar';
 import ResourceInspector from '../features/inspector/ResourceInspector';
 import ExportModal from '../features/export/ExportModal';
+import StackSelector from '../features/stack/StackSelector';
+import StackWizard from '../features/stack/StackWizard';
+import CostEstimateModal from '../features/cost/CostEstimateModal';
 
-const Header: React.FC<{ onExport: () => void }> = ({ onExport }) => {
+const Header: React.FC<{
+    onExport: () => void;
+    onShowCosts: () => void;
+    onNewStack: () => void;
+}> = ({ onExport, onShowCosts, onNewStack }) => {
     const clearGraph = useInfraStore((state) => state.clearGraph);
     const domains = useInfraStore((state) => state.domains);
     const resources = useInfraStore((state) => state.resources);
@@ -15,28 +22,21 @@ const Header: React.FC<{ onExport: () => void }> = ({ onExport }) => {
     const setActiveModuleId = useUIStore((state) => state.setActiveModuleId);
     const setSelectedId = useUIStore((state) => state.setSelectedId);
 
+    const currentStackType = useInfraStore((state) => state.currentStackType);
+
     const handleNew = () => {
         if (domains.size > 0 || resources.size > 0) {
-            if (confirm('Clear current project? This cannot be undone.')) {
-                clearGraph();
-                setActiveModuleId(null);
-                setSelectedId(null);
+            if (confirm('Start a new stack? Current work will be lost unless saved.')) {
+                onNewStack();
             }
-        }
-    };
-
-    const handleClearCanvas = () => {
-        if (confirm('🗑️ Clear entire canvas?\n\nThis will:\n• Delete all resources\n• Delete all modules\n• Clear localStorage\n\nThis cannot be undone!')) {
-            clearGraph();
-            setActiveModuleId(null);
-            setSelectedId(null);
-            localStorage.clear();
-            window.location.reload();
+        } else {
+            onNewStack();
         }
     };
 
     const handleSave = () => {
         const projectData = {
+            currentStackType,
             domains: Array.from(domains.values()),
             resources: Array.from(resources.values()),
             connections: Array.from(connections.values()),
@@ -69,6 +69,10 @@ const Header: React.FC<{ onExport: () => void }> = ({ onExport }) => {
                         connections: projectData.connections
                     });
 
+                    if (projectData.currentStackType) {
+                        useInfraStore.getState().setCurrentStackType(projectData.currentStackType);
+                    }
+
                     alert('✅ Project loaded');
                 } catch (error) {
                     alert('❌ Failed to load project');
@@ -79,10 +83,6 @@ const Header: React.FC<{ onExport: () => void }> = ({ onExport }) => {
         }
     };
 
-    const handleImport = () => {
-        alert('Import from Terraform coming in Phase 2');
-    };
-
     const resourceCount = resources.size;
     const domainCount = domains.size;
 
@@ -90,6 +90,11 @@ const Header: React.FC<{ onExport: () => void }> = ({ onExport }) => {
         <header className="h-14 bg-gray-900 border-b border-gray-800 text-white flex items-center justify-between px-4">
             <div className="flex items-center gap-4">
                 <h1 className="text-xl font-bold text-gray-100">Terramod</h1>
+                {currentStackType && (
+                    <div className="text-xs text-gray-400 bg-gray-800 px-2 py-1 rounded">
+                        {currentStackType.replace(/-/g, ' ').toUpperCase()}
+                    </div>
+                )}
                 <div className="text-xs text-gray-400">
                     {domainCount} {domainCount === 1 ? 'module' : 'modules'} •
                     {' '}{resourceCount} {resourceCount === 1 ? 'resource' : 'resources'}
@@ -100,7 +105,7 @@ const Header: React.FC<{ onExport: () => void }> = ({ onExport }) => {
                     onClick={handleNew}
                     className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded transition-colors text-sm border border-gray-700"
                 >
-                    🆕 New
+                    🆕 New Stack
                 </button>
                 <button
                     id="save-btn"
@@ -116,28 +121,25 @@ const Header: React.FC<{ onExport: () => void }> = ({ onExport }) => {
                 >
                     📂 Load
                 </button>
+
+                <div className="h-6 w-px bg-gray-700 mx-1"></div>
+
+                {/* Cost Estimate Button - Prominent */}
+                <button
+                    onClick={onShowCosts}
+                    className="px-4 py-1.5 bg-blue-700 hover:bg-blue-600 text-blue-100 rounded transition-colors font-medium text-sm border border-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={resourceCount === 0}
+                    title="See cost estimates for all scenarios"
+                >
+                    💰 Estimate Costs
+                </button>
+
                 <button
                     onClick={onExport}
                     className="px-4 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-100 rounded transition-colors font-medium text-sm border border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
                     disabled={resourceCount === 0}
                 >
-                    📦 Export
-                </button>
-                <button
-                    onClick={handleImport}
-                    className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded transition-colors text-sm border border-gray-700"
-                >
-                    📥 Import
-                </button>
-
-                <div className="h-6 w-px bg-gray-700 mx-1"></div>
-
-                <button
-                    onClick={handleClearCanvas}
-                    className="px-3 py-1.5 bg-red-900 hover:bg-red-800 text-red-200 rounded transition-colors text-sm border border-red-700"
-                    title="Clear entire canvas and localStorage"
-                >
-                    🗑️ Clear All
+                    📦 Export Terraform
                 </button>
             </div>
         </header>
@@ -147,10 +149,67 @@ const Header: React.FC<{ onExport: () => void }> = ({ onExport }) => {
 const MainLayout: React.FC = () => {
     const selectedId = useUIStore((state) => state.selectedId);
     const [exportModalOpen, setExportModalOpen] = useState(false);
+    const [costModalOpen, setCostModalOpen] = useState(false);
+    const [showStackSelector, setShowStackSelector] = useState(false);
+    const [selectedStackId, setSelectedStackId] = useState<string | null>(null);
 
+    const domains = useInfraStore((state) => state.domains);
+    const currentStackType = useInfraStore((state) => state.currentStackType);
+    const setCurrentStackType = useInfraStore((state) => state.setCurrentStackType);
+
+    // Show stack selector if no domains exist and no stack type selected
+    const shouldShowStackSelector = domains.size === 0 && !currentStackType && !selectedStackId;
+
+    const handleStackSelected = (stackId: string) => {
+        setSelectedStackId(stackId);
+        setCurrentStackType(stackId);
+    };
+
+    const handleStackWizardComplete = () => {
+        setSelectedStackId(null);
+        // Stack is now created, show main interface
+    };
+
+    const handleStackWizardCancel = () => {
+        setSelectedStackId(null);
+        setCurrentStackType(null);
+        setShowStackSelector(false);
+    };
+
+    const handleNewStack = () => {
+        useInfraStore.getState().clearGraph();
+        setCurrentStackType(null);
+        setShowStackSelector(true);
+    };
+
+    // Stack Wizard is showing
+    if (selectedStackId) {
+        return (
+            <StackWizard
+                stackId={selectedStackId}
+                onComplete={handleStackWizardComplete}
+                onCancel={handleStackWizardCancel}
+            />
+        );
+    }
+
+    // Stack Selector is showing
+    if (shouldShowStackSelector || showStackSelector) {
+        return (
+            <StackSelector
+                onStackSelected={handleStackSelected}
+            />
+        );
+    }
+
+    // Main interface
     return (
         <div className="flex flex-col h-screen bg-gray-900">
-            <Header onExport={() => setExportModalOpen(true)} />
+            <Header
+                onExport={() => setExportModalOpen(true)}
+                onShowCosts={() => setCostModalOpen(true)}
+                onNewStack={handleNewStack}
+            />
 
             <div className="flex flex-1 overflow-hidden">
                 {/* Left: Module Gallery / Resource Palette */}
@@ -183,6 +242,15 @@ const MainLayout: React.FC = () => {
                 isOpen={exportModalOpen}
                 onClose={() => setExportModalOpen(false)}
             />
+
+            {/* Cost Estimate Modal */}
+            {currentStackType && (
+                <CostEstimateModal
+                    isOpen={costModalOpen}
+                    onClose={() => setCostModalOpen(false)}
+                    stackType={currentStackType}
+                />
+            )}
         </div>
     );
 };
