@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useUIStore } from '../store/uiStore';
 import { useInfraStore } from '../store/infraStore';
 import ResourceListView from '../features/resources/ResourceListView';
@@ -155,28 +155,36 @@ const MainLayout: React.FC = () => {
     const selectedId = useUIStore((state) => state.selectedId);
     const [exportModalOpen, setExportModalOpen] = useState(false);
     const [costModalOpen, setCostModalOpen] = useState(false);
-    const [showStackSelector, setShowStackSelector] = useState(false);
+    const [forceShowMain, setForceShowMain] = useState(false);
 
     const resources = useInfraStore((state) => state.resources);
     const currentStackType = useInfraStore((state) => state.currentStackType);
     const setCurrentStackType = useInfraStore((state) => state.setCurrentStackType);
 
-    const shouldShowStackSelector = resources.size === 0 && !currentStackType;
+    // Auto-detect when resources are created (wizard completed)
+    useEffect(() => {
+        if (resources.size > 0) {
+            setForceShowMain(true);
+        }
+    }, [resources.size]);
+
+    // Show stack selector only if: no resources AND not forced to show main
+    const shouldShowStackSelector = resources.size === 0 && !forceShowMain;
 
     const handleStackSelected = (stackId: string) => {
-        // Wizard handles all resource creation for 3-tier
-        // This callback is for other templates (placeholders)
+        // This is called when a stack template is selected
+        // For 3-tier, the wizard will create resources
+        // For others, we'd need to implement their logic
         setCurrentStackType(stackId);
-        setShowStackSelector(false);
     };
 
     const handleNewStack = () => {
         useInfraStore.getState().clearGraph();
         setCurrentStackType(null);
-        setShowStackSelector(true);
+        setForceShowMain(false);
     };
 
-    if (shouldShowStackSelector || showStackSelector) {
+    if (shouldShowStackSelector) {
         return <StackSelector onStackSelected={handleStackSelected} />;
     }
 

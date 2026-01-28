@@ -36,7 +36,9 @@ const StackSelector: React.FC<StackSelectorProps> = ({ onStackSelected }) => {
 
     const handleWizardComplete = () => {
         setShowWizard(false);
-        // MainLayout will handle the rest
+        setSelectedStack(null);
+        // Notify parent that stack was selected and resources created
+        onStackSelected('3-tier-web-app');
     };
 
     const handleWizardCancel = () => {
@@ -144,11 +146,16 @@ const StackSelector: React.FC<StackSelectorProps> = ({ onStackSelected }) => {
     };
 
     if (showWizard && selectedStack === '3-tier-web-app') {
-        return <StackConfigWizard onComplete={handleWizardComplete} onCancel={handleWizardCancel} />;
+        return (
+            <StackConfigWizard
+                onComplete={handleWizardComplete}
+                onCancel={handleWizardCancel}
+            />
+        );
     }
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-950 via-purple-900/20 to-slate-950 p-8">
+        <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-8">
             {/* Header */}
             <div className="max-w-7xl mx-auto mb-12">
                 <div className="flex items-center gap-4 mb-6">
