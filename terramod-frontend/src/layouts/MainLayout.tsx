@@ -136,7 +136,7 @@ const Header: React.FC<{
                     disabled={resourceCount === 0}
                     className="px-4 py-2 rounded-lg text-sm font-medium bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 border border-violet-500/20 hover:border-violet-500/30 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
                 >
-                    Estimate Costs
+                    💰 Costs
                 </button>
 
                 <button
@@ -157,66 +157,16 @@ const MainLayout: React.FC = () => {
     const [costModalOpen, setCostModalOpen] = useState(false);
     const [showStackSelector, setShowStackSelector] = useState(false);
 
-    const domains = useInfraStore((state) => state.domains);
     const resources = useInfraStore((state) => state.resources);
-    const addDomain = useInfraStore((state) => state.addDomain);
-    const addResource = useInfraStore((state) => state.addResource);
     const currentStackType = useInfraStore((state) => state.currentStackType);
     const setCurrentStackType = useInfraStore((state) => state.setCurrentStackType);
 
     const shouldShowStackSelector = resources.size === 0 && !currentStackType;
 
     const handleStackSelected = (stackId: string) => {
-        const template = getStackTemplate(stackId);
-        if (!template) {
-            alert('Stack template not found');
-            return;
-        }
-
+        // Wizard handles all resource creation for 3-tier
+        // This callback is for other templates (placeholders)
         setCurrentStackType(stackId);
-
-        const createdDomains: Record<string, string> = {};
-        template.requiredModules.forEach((moduleType) => {
-            const moduleId = `module_${moduleType}_${Date.now()}`;
-            addDomain({
-                id: moduleId,
-                name: moduleType.charAt(0).toUpperCase() + moduleType.slice(1),
-                type: moduleType,
-                resourceIds: [],
-                inputs: [],
-                outputs: [],
-                position: { x: 0, y: 0 },
-                width: 200,
-                height: 150,
-                scope: 'regional'
-            });
-            createdDomains[moduleType] = moduleId;
-        });
-
-        template.starterResources.forEach((starterGroup) => {
-            const domainId = createdDomains[starterGroup.domain];
-            if (!domainId) return;
-
-            starterGroup.resources.forEach((resourceDef) => {
-                const resourceId = `resource_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-                const defaultArgs = getDefaultArgumentsForResource(resourceDef.type);
-
-                addResource({
-                    id: resourceId,
-                    type: resourceDef.type,
-                    domainId: domainId,
-                    name: resourceDef.name,
-                    arguments: defaultArgs,
-                    deployment: {
-                        strategy: getDefaultDeploymentStrategy(resourceDef.type),
-                        cidrAuto: resourceDef.type === 'aws_subnet'
-                    },
-                    position: { x: 0, y: 0 },
-                    validationState: { isValid: true, errors: [], warnings: [] }
-                });
-            });
-        });
-
         setShowStackSelector(false);
     };
 
@@ -273,40 +223,5 @@ const MainLayout: React.FC = () => {
         </div>
     );
 };
-
-function getDefaultArgumentsForResource(resourceType: string): Record<string, any> {
-    const defaults: Record<string, any> = {};
-
-    if (resourceType === 'aws_vpc') {
-        defaults.cidr_block = '10.0.0.0/16';
-        defaults.enable_dns_hostnames = true;
-        defaults.enable_dns_support = true;
-    } else if (resourceType === 'aws_subnet') {
-        defaults.cidr_block = '10.0.1.0/24';
-    } else if (resourceType === 'aws_instance') {
-        defaults.ami = 'ami-0c55b159cbfafe1f0';
-        defaults.instance_type = 't3.micro';
-    } else if (resourceType === 'aws_s3_bucket') {
-        defaults.bucket = `my-bucket-${Date.now()}`;
-    } else if (resourceType === 'aws_security_group') {
-        defaults.description = 'Security group created by Terramod';
-    }
-
-    return defaults;
-}
-
-function getDefaultDeploymentStrategy(resourceType: string): any {
-    const strategies: Record<string, string> = {
-        'aws_vpc': 'single',
-        'aws_subnet': 'per-az',
-        'aws_nat_gateway': 'per-az',
-        'aws_instance': 'per-az',
-        'aws_lb': 'multi-az',
-        'aws_alb': 'multi-az',
-        'aws_nlb': 'multi-az',
-        'aws_rds_cluster': 'multi-az'
-    };
-    return strategies[resourceType] || 'single';
-}
 
 export default MainLayout;

@@ -16,6 +16,29 @@ const ResourceListView: React.FC = () => {
     const allDomains = Array.from(domains.values());
     const allResources = Array.from(resources.values());
 
+    // Group resources by environment and domain
+    const resourcesByEnvAndDomain = useMemo(() => {
+        const grouped: Record<string, Record<string, any[]>> = {};
+
+        allResources.forEach((resource) => {
+            const env = (resource.arguments as any).tags?.Environment || 'unknown';
+            const domain = domains.get(resource.domainId);
+            if (!domain) return;
+
+            if (!grouped[env]) grouped[env] = {};
+            if (!grouped[env][domain.type]) grouped[env][domain.type] = [];
+
+            grouped[env][domain.type].push(resource);
+        });
+
+        return grouped;
+    }, [allResources, domains]);
+
+    const environments = Object.keys(resourcesByEnvAndDomain).sort((a, b) => {
+        const order = { dev: 1, staging: 2, prod: 3 };
+        return ((order as any)[a] || 99) - ((order as any)[b] || 99);
+    });
+
     const resourcesByDomain = useMemo(() => {
         const grouped: Record<string, any[]> = {};
         allDomains.forEach(domain => {
@@ -34,11 +57,12 @@ const ResourceListView: React.FC = () => {
         const icons: Record<string, string> = {
             vpc: '🌐', subnet: '📍', internet_gateway: '🌐', nat_gateway: '🔄',
             route_table: '📋', security_group: '🔒', instance: '💻', autoscaling_group: '📈',
-            ecs_cluster: '🐳', eks_cluster: '☸️', lambda_function: '⚡',
-            api_gateway_rest_api: '🔌', db_instance: '🗃️', dynamodb_table: '⚡',
-            s3_bucket: '🗄️', sqs_queue: '📨', sns_topic: '📢', iam_role: '👤',
-            iam_policy: '📜', cloudwatch_log_group: '📊', cloudwatch_metric_alarm: '🔔',
-            lb: '⚖️', alb: '⚖️', nlb: '⚖️'
+            launch_template: '📋', ecs_cluster: '🐳', eks_cluster: '☸️', lambda_function: '⚡',
+            api_gateway_rest_api: '🔌', db_instance: '🗃️', db_subnet_group: '🗃️',
+            dynamodb_table: '⚡', elasticache_cluster: '⚡', s3_bucket: '🗄️',
+            sqs_queue: '📨', sns_topic: '📢', iam_role: '👤', iam_policy: '📜',
+            cloudwatch_log_group: '📊', cloudwatch_metric_alarm: '🔔',
+            lb: '⚖️', alb: '⚖️', nlb: '⚖️', cloudfront_distribution: '🌍'
         };
         return icons[type] || '📦';
     };
@@ -55,23 +79,20 @@ const ResourceListView: React.FC = () => {
         return category.charAt(0).toUpperCase() + category.slice(1);
     };
 
-    const getDeploymentBadge = (strategy: string) => {
-        const badges = {
-            single: { text: '1×', color: 'bg-slate-800/50 text-slate-400 border-slate-700/50' },
-            'per-az': { text: `${deploymentConfig.availabilityZones.length}×`, color: 'bg-violet-500/10 text-violet-300 border-violet-500/30' },
-            'multi-az': { text: 'Multi-AZ', color: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30' },
-            regional: { text: 'Regional', color: 'bg-purple-500/10 text-purple-300 border-purple-500/30' }
+    const getEnvironmentColor = (env: string) => {
+        const colors = {
+            dev: 'bg-blue-500/10 text-blue-300 border-blue-500/30',
+            staging: 'bg-amber-500/10 text-amber-300 border-amber-500/30',
+            prod: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30',
+            unknown: 'bg-slate-500/10 text-slate-300 border-slate-500/30'
         };
-        const badge = badges[strategy as keyof typeof badges] || badges.single;
-        return (
-            <span className={`px-2 py-0.5 rounded-md text-xs font-medium border ${badge.color}`}>
-                {badge.text}
-            </span>
-        );
+        return colors[env as keyof typeof colors] || colors.unknown;
     };
 
     const renderResourceCard = (resource: any) => {
         const isSelected = selectedId === resource.id;
+        const env = (resource.arguments as any).tags?.Environment || 'unknown';
+        const az = (resource as any).availabilityZone;
 
         return (
             <div
@@ -86,9 +107,16 @@ const ResourceListView: React.FC = () => {
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                         <div className="text-2xl">{getResourceIcon(resource.type)}</div>
                         <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
+                            <div className="flex items-center gap-2 mb-1 flex-wrap">
                                 <h3 className="font-medium text-white truncate">{resource.name}</h3>
-                                {resource.deployment && getDeploymentBadge(resource.deployment.strategy)}
+                                <span className={`px-2 py-0.5 rounded-md text-xs font-medium border ${getEnvironmentColor(env)}`}>
+                                    {env.toUpperCase()}
+                                </span>
+                                {az && (
+                                    <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-violet-500/10 text-violet-300 border border-violet-500/20">
+                                        {az.split('-').pop()?.toUpperCase()}
+                                    </span>
+                                )}
                             </div>
                             <div className="text-xs text-slate-400">
                                 {resource.type.replace('aws_', '').replace(/_/g, ' ')}
@@ -114,17 +142,16 @@ const ResourceListView: React.FC = () => {
                     </button>
                 </div>
 
-                {resource.deployment?.strategy === 'per-az' && (
+                {/* Additional info for specific resource types */}
+                {resource.type === 'aws_subnet' && resource.arguments.cidr_block && (
                     <div className="mt-3 pt-3 border-t border-white/5">
-                        <div className="flex flex-wrap gap-1.5">
-                            {deploymentConfig.availabilityZones.map((az: string) => (
-                                <span
-                                    key={az}
-                                    className="px-2 py-1 text-xs rounded-md bg-violet-500/10 text-violet-300 border border-violet-500/20"
-                                >
-                                    {az.split('-').pop()}
+                        <div className="text-xs text-slate-400">
+                            CIDR: <span className="text-slate-300 font-mono">{resource.arguments.cidr_block}</span>
+                            {resource.arguments.map_public_ip_on_launch && (
+                                <span className="ml-2 px-2 py-0.5 rounded bg-blue-500/10 text-blue-300 border border-blue-500/20">
+                                    Public
                                 </span>
-                            ))}
+                            )}
                         </div>
                     </div>
                 )}
@@ -142,8 +169,7 @@ const ResourceListView: React.FC = () => {
                         </div>
                         <h3 className="text-xl font-semibold text-white mb-2">No Resources Yet</h3>
                         <p className="text-sm text-slate-400">
-                            This stack template should have pre-populated resources.
-                            If you see this message, something went wrong during stack creation.
+                            Your infrastructure will appear here after you complete the stack configuration wizard.
                         </p>
                     </div>
                 </div>
@@ -152,27 +178,59 @@ const ResourceListView: React.FC = () => {
 
         return (
             <div className="space-y-8">
-                {Object.entries(resourcesByDomain).map(([domainType, domainResources]) => (
-                    <div key={domainType}>
-                        <div className="flex items-center gap-3 mb-4">
-                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500/20 to-purple-600/20 border border-violet-500/30 flex items-center justify-center">
-                                <span className="text-xl">{getCategoryIcon(domainType as DomainType)}</span>
-                            </div>
-                            <div>
-                                <h3 className="text-lg font-semibold text-white">
-                                    {getCategoryLabel(domainType as DomainType)}
-                                </h3>
-                                <p className="text-xs text-slate-400">
-                                    {domainResources.length} {domainResources.length === 1 ? 'resource' : 'resources'}
-                                </p>
+                {/* Group by Environment */}
+                {environments.map((env) => (
+                    <div key={env}>
+                        <div className="sticky top-0 z-10 backdrop-blur-xl bg-slate-900/50 py-3 mb-4 -mx-6 px-6 border-b border-white/5">
+                            <div className="flex items-center gap-3">
+                                <div className={`px-4 py-2 rounded-xl border ${getEnvironmentColor(env)}`}>
+                                    <span className="font-bold uppercase text-sm">{env}</span>
+                                </div>
+                                <div className="text-sm text-slate-400">
+                                    {Object.values(resourcesByEnvAndDomain[env] || {}).flat().length} resources
+                                </div>
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                            {domainResources.map(renderResourceCard)}
-                        </div>
+                        {/* Group by Domain within Environment */}
+                        {Object.entries(resourcesByEnvAndDomain[env] || {}).map(([domainType, domainResources]) => (
+                            <div key={`${env}-${domainType}`} className="mb-6">
+                                <div className="flex items-center gap-3 mb-3">
+                                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500/20 to-purple-600/20 border border-violet-500/30 flex items-center justify-center">
+                                        <span className="text-lg">{getCategoryIcon(domainType as DomainType)}</span>
+                                    </div>
+                                    <div>
+                                        <h4 className="text-sm font-semibold text-white">
+                                            {getCategoryLabel(domainType as DomainType)}
+                                        </h4>
+                                        <p className="text-xs text-slate-500">
+                                            {domainResources.length} {domainResources.length === 1 ? 'resource' : 'resources'}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                                    {domainResources.map(renderResourceCard)}
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 ))}
+
+                {/* Summary Cards */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8 pt-8 border-t border-white/5">
+                    {Object.entries(resourcesByDomain).map(([domainType, domainResources]) => (
+                        <button
+                            key={domainType}
+                            onClick={() => setActiveTab(domainType as DomainType)}
+                            className="p-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all"
+                        >
+                            <div className="text-2xl mb-2">{getCategoryIcon(domainType as DomainType)}</div>
+                            <div className="text-sm font-medium text-white">{getCategoryLabel(domainType as DomainType)}</div>
+                            <div className="text-xs text-slate-400 mt-1">{domainResources.length} resources</div>
+                        </button>
+                    ))}
+                </div>
             </div>
         );
     };
@@ -196,9 +254,35 @@ const ResourceListView: React.FC = () => {
             );
         }
 
+        // Group by environment for category view
+        const resourcesByEnv: Record<string, any[]> = {};
+        categoryResources.forEach((resource) => {
+            const env = (resource.arguments as any).tags?.Environment || 'unknown';
+            if (!resourcesByEnv[env]) resourcesByEnv[env] = [];
+            resourcesByEnv[env].push(resource);
+        });
+
         return (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {categoryResources.map(renderResourceCard)}
+            <div className="space-y-8">
+                {Object.entries(resourcesByEnv).sort(([a], [b]) => {
+                    const order = { dev: 1, staging: 2, prod: 3 };
+                    return ((order as any)[a] || 99) - ((order as any)[b] || 99);
+                }).map(([env, envResources]) => (
+                    <div key={env}>
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className={`px-4 py-2 rounded-xl border ${getEnvironmentColor(env)}`}>
+                                <span className="font-bold uppercase text-sm">{env}</span>
+                            </div>
+                            <div className="text-sm text-slate-400">
+                                {envResources.length} {envResources.length === 1 ? 'resource' : 'resources'}
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                            {envResources.map(renderResourceCard)}
+                        </div>
+                    </div>
+                ))}
             </div>
         );
     };
@@ -211,7 +295,7 @@ const ResourceListView: React.FC = () => {
                 <div className="px-6 pt-6 pb-4">
                     <h2 className="text-2xl font-semibold text-white mb-1">Resources</h2>
                     <p className="text-sm text-slate-400">
-                        {allResources.length} {allResources.length === 1 ? 'resource' : 'resources'} across {availableCategories.length} {availableCategories.length === 1 ? 'category' : 'categories'}
+                        {allResources.length} {allResources.length === 1 ? 'resource' : 'resources'} across {environments.length} {environments.length === 1 ? 'environment' : 'environments'}
                     </p>
                 </div>
 
