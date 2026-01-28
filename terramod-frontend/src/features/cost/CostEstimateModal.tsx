@@ -254,7 +254,7 @@ const CostEstimateModal: React.FC<CostEstimateModalProps> = ({ isOpen, onClose, 
                             Estimated monthly costs for {report.stack_type} in {report.region}
                         </p>
                         <p className="text-xs text-blue-600 mt-1">
-                            Last updated: {new Date(report.last_updated).toLocaleDateString()}
+                            Last updated: {report.last_updated ? new Date(report.last_updated).toLocaleDateString() : 'Just now'}
                         </p>
                     </div>
 
@@ -282,7 +282,7 @@ const CostEstimateModal: React.FC<CostEstimateModalProps> = ({ isOpen, onClose, 
                 </div>
             )}
 
-            {report && selectedScenario && renderScenarioDetails(selectedScenario)}
+            {report && selectedScenario && renderScenarioDetails()}
         </Modal>
     );
 };

@@ -3,6 +3,7 @@ import { post, get } from './client';
 export interface CostDriver {
     name: string;
     value: number;
+    unit: string;  // ADDED: Missing unit property
     cost: number;
     explanation: string;
 }
@@ -31,6 +32,7 @@ export interface CostEstimateReport {
     scenarios: Record<string, ScenarioCost>;
     free_tier_eligible: boolean;
     optimization_recommendations: string[];
+    last_updated?: string;  // ADDED: Optional timestamp
 }
 
 export interface CostEstimateRequest {
