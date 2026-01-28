@@ -64,79 +64,40 @@ const ModuleGallery: React.FC = () => {
         return { added: true, resourceCount: module.resourceIds.length, moduleId: module.id };
     };
 
-    const getModuleIcon = (type: DomainType): string => {
-        const template = MODULE_TEMPLATES.find(t => t.type === type);
-        return template?.icon || '📦';
-    };
-
     return (
-        <div className="space-y-4">
-            {/* Added Modules Stack */}
-            {domains.length > 0 && (
-                <div>
-                    <div className="text-xs text-gray-500 mb-2 uppercase tracking-wider">Your Modules</div>
-                    <div className="space-y-2">
-                        {domains.map((domain) => (
-                            <div
-                                key={domain.id}
-                                onClick={() => {
-                                    setActiveModuleId(domain.id);
-                                    setSelectedId(null);
-                                }}
-                                className="p-2 bg-gray-800 border border-gray-700 rounded cursor-pointer hover:border-gray-600 hover:bg-gray-750 transition-all"
-                            >
-                                <div className="flex items-center gap-2">
-                                    <span className="text-lg">{getModuleIcon(domain.type)}</span>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="font-medium text-sm text-gray-200 truncate">{domain.name}</div>
-                                        <div className="text-xs text-gray-500">{domain.resourceIds.length} resources</div>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
+        <div>
+            <div className="text-xs text-gray-500 mb-2 uppercase tracking-wider">Available Modules</div>
+            <div className="space-y-2">
+                {MODULE_TEMPLATES.map((template) => {
+                    const status = getModuleStatus(template.type);
 
-            {/* Available Modules Gallery */}
-            <div>
-                <div className="text-xs text-gray-500 mb-2 uppercase tracking-wider">Available Modules</div>
-                <div className="space-y-2">
-                    {MODULE_TEMPLATES.map((template) => {
-                        const status = getModuleStatus(template.type);
+                    // Skip if module is already added
+                    if (status.added) return null;
 
-                        return (
-                            <div
-                                key={template.type}
-                                className={`p-3 rounded-lg border transition-all cursor-pointer ${status.added
-                                        ? 'bg-gray-800 border-gray-600 hover:border-gray-500'
-                                        : 'bg-gray-850 border-gray-700 hover:border-gray-600'
-                                    }`}
-                                onClick={() => handleAddModule(template)}
-                            >
-                                <div className="flex items-center gap-3">
-                                    <span className="text-2xl">{template.icon}</span>
-                                    <div className="flex-1 min-w-0">
-                                        <h3 className="font-semibold text-gray-100 text-sm">{template.name}</h3>
-                                    </div>
-                                    {status.added ? (
-                                        <span className="text-green-500 text-lg">✓</span>
-                                    ) : (
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleAddModule(template);
-                                            }}
-                                            className="text-xs px-2 py-1 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded transition-colors"
-                                        >
-                                            +
-                                        </button>
-                                    )}
+                    return (
+                        <div
+                            key={template.type}
+                            className="p-3 rounded-lg border bg-gray-850 border-gray-700 hover:border-gray-600 transition-all cursor-pointer"
+                            onClick={() => handleAddModule(template)}
+                        >
+                            <div className="flex items-center gap-3">
+                                <span className="text-2xl">{template.icon}</span>
+                                <div className="flex-1 min-w-0">
+                                    <h3 className="font-semibold text-gray-100 text-sm">{template.name}</h3>
                                 </div>
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleAddModule(template);
+                                    }}
+                                    className="text-xs px-2 py-1 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded transition-colors"
+                                >
+                                    +
+                                </button>
                             </div>
-                        );
-                    })}
-                </div>
+                        </div>
+                    );
+                })}
             </div>
         </div>
     );

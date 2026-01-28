@@ -7,12 +7,14 @@ const ModuleContent: React.FC = () => {
     const activeModuleId = useUIStore((state) => state.activeModuleId);
     const selectedId = useUIStore((state) => state.selectedId);
     const setSelectedId = useUIStore((state) => state.setSelectedId);
+    const setActiveModuleId = useUIStore((state) => state.setActiveModuleId);
 
     const domains = useInfraStore((state) => state.domains);
     const resources = useInfraStore((state) => state.resources);
     const deleteResource = useInfraStore((state) => state.deleteResource);
     const deploymentConfig = useInfraStore((state) => state.deploymentConfig);
 
+    const allDomains = Array.from(domains.values());
     const activeModule = activeModuleId ? domains.get(activeModuleId) : null;
 
     const moduleResources = useMemo(() => {
@@ -21,6 +23,21 @@ const ModuleContent: React.FC = () => {
             .map(rid => resources.get(rid))
             .filter(Boolean);
     }, [activeModule, resources]);
+
+    const getModuleIcon = (type: string): string => {
+        const icons: Record<string, string> = {
+            networking: '🌐',
+            compute: '💻',
+            serverless: '⚡',
+            data: '🗄️',
+            storage: '📦',
+            messaging: '📨',
+            identity: '👤',
+            observability: '📊',
+            edge: '🔀'
+        };
+        return icons[type] || '📦';
+    };
 
     const getDeploymentBadge = (strategy: DeploymentStrategy) => {
         const badges = {
@@ -74,12 +91,54 @@ const ModuleContent: React.FC = () => {
     };
 
     if (!activeModule) {
+        // Show module stack if there are modules, otherwise show empty state
+        if (allDomains.length > 0) {
+            return (
+                <div className="flex-1 bg-gray-900 flex flex-col">
+                    <div className="px-6 py-4 border-b border-gray-800 bg-gray-850">
+                        <h2 className="text-xl font-bold text-gray-100">Your Modules</h2>
+                        <div className="text-sm text-gray-400 mt-1">
+                            {allDomains.length} {allDomains.length === 1 ? 'module' : 'modules'}
+                        </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {allDomains.map((domain) => (
+                                <div
+                                    key={domain.id}
+                                    onClick={() => {
+                                        setActiveModuleId(domain.id);
+                                        setSelectedId(null);
+                                    }}
+                                    className="p-4 bg-gray-800 border border-gray-700 rounded-lg cursor-pointer hover:border-gray-600 hover:bg-gray-750 transition-all"
+                                >
+                                    <div className="flex items-start gap-3">
+                                        <span className="text-3xl">{getModuleIcon(domain.type)}</span>
+                                        <div className="flex-1 min-w-0">
+                                            <h3 className="font-semibold text-gray-100 mb-1 truncate">{domain.name}</h3>
+                                            <div className="text-xs text-gray-500 capitalize mb-2">{domain.type}</div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-sm text-gray-400">
+                                                    {domain.resourceIds.length} {domain.resourceIds.length === 1 ? 'resource' : 'resources'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
         return (
             <div className="flex-1 bg-gray-900 flex items-center justify-center">
                 <div className="text-center text-gray-500 max-w-md">
                     <div className="text-6xl mb-4">📦</div>
-                    <p className="text-lg font-medium mb-2">No Module Selected</p>
-                    <p className="text-sm">Select a module from the left panel to start</p>
+                    <p className="text-lg font-medium mb-2">No Modules Yet</p>
+                    <p className="text-sm">Add a module from the left panel to start</p>
                 </div>
             </div>
         );
