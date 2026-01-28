@@ -8,62 +8,47 @@ interface StackConfigWizardProps {
     onCancel: () => void;
 }
 
-type Environment = 'dev' | 'staging' | 'prod';
 type ComputeType = 'ec2' | 'ecs';
 type DatabaseEngine = 'postgresql' | 'mysql' | 'none';
 
 interface StackConfiguration {
-    // Step 1: Project & Environment
+    // Step 1: Project Basics
     projectName: string;
     region: string;
-    environments: Environment[];
+    availabilityZones: number;
 
-    // Step 2: Networking
-    availabilityZones: {
-        dev: number;
-        staging: number;
-        prod: number;
-    };
-
-    // Step 3: Compute
+    // Step 2: Compute
     computeType: ComputeType;
-    instanceScaling: {
-        dev: { min: number; max: number };
-        staging: { min: number; max: number };
-        prod: { min: number; max: number };
-    };
+    instanceType: string;
+    minInstances: number;
+    maxInstances: number;
     enableALB: boolean;
 
-    // Step 4: Database
+    // Step 3: Database
     databaseEngine: DatabaseEngine;
-    multiAZ: {
-        dev: boolean;
-        staging: boolean;
-        prod: boolean;
-    };
+    dbInstanceClass: string;
+    dbStorage: number;
+    multiAZ: boolean;
 
-    // Step 5: Optional Components
+    // Step 4: Optional Components
     enableRedis: boolean;
     enableBastion: boolean;
-
-    // Step 6: Frontend
     includeFrontend: boolean;
 }
 
 const DEFAULT_CONFIG: StackConfiguration = {
     projectName: '',
     region: 'us-east-1',
-    environments: ['dev', 'staging', 'prod'],
-    availabilityZones: { dev: 1, staging: 2, prod: 3 },
+    availabilityZones: 2,
     computeType: 'ec2',
-    instanceScaling: {
-        dev: { min: 1, max: 2 },
-        staging: { min: 2, max: 3 },
-        prod: { min: 3, max: 6 }
-    },
+    instanceType: 't3.small',
+    minInstances: 2,
+    maxInstances: 4,
     enableALB: true,
     databaseEngine: 'postgresql',
-    multiAZ: { dev: false, staging: true, prod: true },
+    dbInstanceClass: 'db.t3.small',
+    dbStorage: 20,
+    multiAZ: true,
     enableRedis: false,
     enableBastion: false,
     includeFrontend: false
@@ -94,40 +79,38 @@ const StackConfigWizard: React.FC<StackConfigWizardProps> = ({ onComplete, onCan
     };
 
     const handleComplete = () => {
+        const azs = getAZsForRegion(config.region, config.availabilityZones);
+
         // Set deployment config
         updateDeploymentConfig({
             primaryRegion: config.region,
-            availabilityZones: [] // Will be set per-environment
+            availabilityZones: azs
         });
 
         setCurrentStackType('3-tier-web-app');
 
-        // Generate resources for each environment
-        config.environments.forEach((env) => {
-            generateEnvironmentResources(env, config);
-        });
+        // Generate resources
+        generateInfrastructure(config);
 
         onComplete();
     };
 
-    const generateEnvironmentResources = (env: Environment, cfg: StackConfiguration) => {
-        const azCount = cfg.availabilityZones[env];
-        const azs = getAZsForRegion(cfg.region, azCount);
+    const generateInfrastructure = (cfg: StackConfiguration) => {
+        const azs = getAZsForRegion(cfg.region, cfg.availabilityZones);
 
-        // Create domains (modules) - shared across environments
+        // Create domains
         const domains = ensureDomains();
 
         // 1. NETWORKING
         const vpcId = createResource({
             type: 'aws_vpc',
             domainId: domains.networking,
-            name: `vpc-${env}`,
-            environment: env,
+            name: 'main-vpc',
             arguments: {
-                cidr_block: getVPCCIDR(env),
+                cidr_block: '10.0.0.0/16',
                 enable_dns_hostnames: true,
                 enable_dns_support: true,
-                tags: getTags(cfg.projectName, env, 'vpc')
+                tags: getTags(cfg.projectName, 'vpc')
             },
             deployment: { strategy: 'single' }
         });
@@ -136,153 +119,346 @@ const StackConfigWizard: React.FC<StackConfigWizardProps> = ({ onComplete, onCan
         createResource({
             type: 'aws_internet_gateway',
             domainId: domains.networking,
-            name: `igw-${env}`,
-            environment: env,
+            name: 'main-igw',
             arguments: {
                 vpc_id: `\${aws_vpc.${vpcId}.id}`,
-                tags: getTags(cfg.projectName, env, 'igw')
+                tags: getTags(cfg.projectName, 'igw')
+            },
+            deployment: { strategy: 'single' }
+        });
+
+        // EIPs for NAT Gateways (per AZ)
+        azs.forEach((az, idx) => {
+            createResource({
+                type: 'aws_eip',
+                domainId: domains.networking,
+                name: `eip-nat-${idx}`,
+                availabilityZone: az,
+                arguments: {
+                    domain: 'vpc',
+                    tags: getTags(cfg.projectName, `eip-nat-${idx + 1}`)
+                },
+                deployment: { strategy: 'per-az' }
+            });
+        });
+
+        // Public Route Table (single, spans all AZs)
+        const publicRTId = createResource({
+            type: 'aws_route_table',
+            domainId: domains.networking,
+            name: 'rt-public',
+            arguments: {
+                vpc_id: `\${aws_vpc.${vpcId}.id}`,
+                tags: getTags(cfg.projectName, 'rt-public')
+            },
+            deployment: { strategy: 'single' }
+        });
+
+        // Public route to Internet Gateway
+        createResource({
+            type: 'aws_route',
+            domainId: domains.networking,
+            name: 'route-public-igw',
+            arguments: {
+                route_table_id: `\${aws_route_table.${publicRTId}.id}`,
+                destination_cidr_block: '0.0.0.0/0',
+                gateway_id: `\${aws_internet_gateway.main-igw.id}`
             },
             deployment: { strategy: 'single' }
         });
 
         // Subnets (per AZ)
         azs.forEach((az, idx) => {
+            const azSuffix = az.split('-').pop();
+
             // Public subnet
-            createResource({
+            const publicSubnetId = createResource({
                 type: 'aws_subnet',
                 domainId: domains.networking,
-                name: `subnet-public-${env}-${az.split('-').pop()}`,
-                environment: env,
+                name: `subnet-public-${azSuffix}`,
                 availabilityZone: az,
                 arguments: {
                     vpc_id: `\${aws_vpc.${vpcId}.id}`,
-                    cidr_block: getSubnetCIDR(env, idx * 2),
+                    cidr_block: `10.0.${idx * 2}.0/24`,
                     availability_zone: az,
                     map_public_ip_on_launch: true,
-                    tags: getTags(cfg.projectName, env, `subnet-public-${idx + 1}`)
+                    tags: getTags(cfg.projectName, `subnet-public-${idx + 1}`)
                 },
                 deployment: { strategy: 'per-az' }
             });
 
             // Private subnet
-            createResource({
+            const privateSubnetId = createResource({
                 type: 'aws_subnet',
                 domainId: domains.networking,
-                name: `subnet-private-${env}-${az.split('-').pop()}`,
-                environment: env,
+                name: `subnet-private-${azSuffix}`,
                 availabilityZone: az,
                 arguments: {
                     vpc_id: `\${aws_vpc.${vpcId}.id}`,
-                    cidr_block: getSubnetCIDR(env, idx * 2 + 1),
+                    cidr_block: `10.0.${idx * 2 + 1}.0/24`,
                     availability_zone: az,
                     map_public_ip_on_launch: false,
-                    tags: getTags(cfg.projectName, env, `subnet-private-${idx + 1}`)
+                    tags: getTags(cfg.projectName, `subnet-private-${idx + 1}`)
                 },
                 deployment: { strategy: 'per-az' }
             });
 
             // NAT Gateway (per AZ)
-            createResource({
+            const natId = createResource({
                 type: 'aws_nat_gateway',
                 domainId: domains.networking,
-                name: `nat-${env}-${az.split('-').pop()}`,
-                environment: env,
+                name: `nat-${azSuffix}`,
                 availabilityZone: az,
                 arguments: {
-                    allocation_id: `\${aws_eip.nat-${env}-${idx}.id}`,
-                    subnet_id: `\${aws_subnet.subnet-public-${env}-${az.split('-').pop()}.id}`,
-                    tags: getTags(cfg.projectName, env, `nat-${idx + 1}`)
+                    allocation_id: `\${aws_eip.eip-nat-${idx}.id}`,
+                    subnet_id: `\${aws_subnet.${publicSubnetId}.id}`,
+                    tags: getTags(cfg.projectName, `nat-${idx + 1}`)
+                },
+                deployment: { strategy: 'per-az' }
+            });
+
+            // Private Route Table (per AZ for NAT)
+            const privateRTId = createResource({
+                type: 'aws_route_table',
+                domainId: domains.networking,
+                name: `rt-private-${azSuffix}`,
+                availabilityZone: az,
+                arguments: {
+                    vpc_id: `\${aws_vpc.${vpcId}.id}`,
+                    tags: getTags(cfg.projectName, `rt-private-${idx + 1}`)
+                },
+                deployment: { strategy: 'per-az' }
+            });
+
+            // Private route to NAT Gateway
+            createResource({
+                type: 'aws_route',
+                domainId: domains.networking,
+                name: `route-private-nat-${azSuffix}`,
+                availabilityZone: az,
+                arguments: {
+                    route_table_id: `\${aws_route_table.${privateRTId}.id}`,
+                    destination_cidr_block: '0.0.0.0/0',
+                    nat_gateway_id: `\${aws_nat_gateway.${natId}.id}`
+                },
+                deployment: { strategy: 'per-az' }
+            });
+
+            // Public subnet association
+            createResource({
+                type: 'aws_route_table_association',
+                domainId: domains.networking,
+                name: `rta-public-${azSuffix}`,
+                availabilityZone: az,
+                arguments: {
+                    subnet_id: `\${aws_subnet.${publicSubnetId}.id}`,
+                    route_table_id: `\${aws_route_table.${publicRTId}.id}`
+                },
+                deployment: { strategy: 'per-az' }
+            });
+
+            // Private subnet association
+            createResource({
+                type: 'aws_route_table_association',
+                domainId: domains.networking,
+                name: `rta-private-${azSuffix}`,
+                availabilityZone: az,
+                arguments: {
+                    subnet_id: `\${aws_subnet.${privateSubnetId}.id}`,
+                    route_table_id: `\${aws_route_table.${privateRTId}.id}`
                 },
                 deployment: { strategy: 'per-az' }
             });
         });
 
         // Security Groups
-        createResource({
+        const sgWebId = createResource({
             type: 'aws_security_group',
             domainId: domains.networking,
-            name: `sg-web-${env}`,
-            environment: env,
+            name: 'sg-web',
             arguments: {
-                name: `${cfg.projectName}-web-${env}`,
+                name: `${cfg.projectName}-web`,
                 description: 'Security group for web tier',
                 vpc_id: `\${aws_vpc.${vpcId}.id}`,
-                tags: getTags(cfg.projectName, env, 'sg-web')
+                ingress: [
+                    {
+                        from_port: 80,
+                        to_port: 80,
+                        protocol: 'tcp',
+                        cidr_blocks: ['0.0.0.0/0']
+                    },
+                    {
+                        from_port: 443,
+                        to_port: 443,
+                        protocol: 'tcp',
+                        cidr_blocks: ['0.0.0.0/0']
+                    }
+                ],
+                egress: [
+                    {
+                        from_port: 0,
+                        to_port: 0,
+                        protocol: '-1',
+                        cidr_blocks: ['0.0.0.0/0']
+                    }
+                ],
+                tags: getTags(cfg.projectName, 'sg-web')
+            },
+            deployment: { strategy: 'single' }
+        });
+
+        const sgDbId = createResource({
+            type: 'aws_security_group',
+            domainId: domains.networking,
+            name: 'sg-db',
+            arguments: {
+                name: `${cfg.projectName}-db`,
+                description: 'Security group for database',
+                vpc_id: `\${aws_vpc.${vpcId}.id}`,
+                ingress: [
+                    {
+                        from_port: 5432,
+                        to_port: 5432,
+                        protocol: 'tcp',
+                        security_groups: [`\${aws_security_group.${sgWebId}.id}`]
+                    }
+                ],
+                egress: [
+                    {
+                        from_port: 0,
+                        to_port: 0,
+                        protocol: '-1',
+                        cidr_blocks: ['0.0.0.0/0']
+                    }
+                ],
+                tags: getTags(cfg.projectName, 'sg-db')
             },
             deployment: { strategy: 'single' }
         });
 
         // 2. EDGE (ALB)
         if (cfg.enableALB) {
-            createResource({
+            const albId = createResource({
                 type: 'aws_lb',
                 domainId: domains.edge,
-                name: `alb-${env}`,
-                environment: env,
+                name: 'main-alb',
                 arguments: {
-                    name: `${cfg.projectName}-alb-${env}`,
+                    name: `${cfg.projectName}-alb`,
                     internal: false,
                     load_balancer_type: 'application',
-                    security_groups: [`\${aws_security_group.sg-web-${env}.id}`],
-                    subnets: azs.map((az) => `\${aws_subnet.subnet-public-${env}-${az.split('-').pop()}.id}`),
-                    enable_deletion_protection: env === 'prod',
-                    tags: getTags(cfg.projectName, env, 'alb')
+                    security_groups: [`\${aws_security_group.${sgWebId}.id}`],
+                    subnets: azs.map((az) => `\${aws_subnet.subnet-public-${az.split('-').pop()}.id}`),
+                    enable_deletion_protection: false,
+                    tags: getTags(cfg.projectName, 'alb')
                 },
                 deployment: { strategy: 'multi-az' }
+            });
+
+            // Target Group
+            const tgId = createResource({
+                type: 'aws_lb_target_group',
+                domainId: domains.edge,
+                name: 'main-tg',
+                arguments: {
+                    name: `${cfg.projectName}-tg`,
+                    port: 80,
+                    protocol: 'HTTP',
+                    vpc_id: `\${aws_vpc.${vpcId}.id}`,
+                    health_check: {
+                        enabled: true,
+                        path: '/',
+                        protocol: 'HTTP',
+                        interval: 30,
+                        timeout: 5,
+                        healthy_threshold: 2,
+                        unhealthy_threshold: 2
+                    },
+                    tags: getTags(cfg.projectName, 'tg')
+                },
+                deployment: { strategy: 'single' }
+            });
+
+            // Listener
+            createResource({
+                type: 'aws_lb_listener',
+                domainId: domains.edge,
+                name: 'main-listener',
+                arguments: {
+                    load_balancer_arn: `\${aws_lb.${albId}.arn}`,
+                    port: 80,
+                    protocol: 'HTTP',
+                    default_action: [
+                        {
+                            type: 'forward',
+                            target_group_arn: `\${aws_lb_target_group.${tgId}.arn}`
+                        }
+                    ]
+                },
+                deployment: { strategy: 'single' }
             });
         }
 
         // 3. COMPUTE
-        const instanceType = getInstanceType(env, cfg.computeType);
-        const scaling = cfg.instanceScaling[env];
-
         if (cfg.computeType === 'ec2') {
-            // Auto Scaling Group (spans AZs)
+            // Launch Template
+            const launchTemplateId = createResource({
+                type: 'aws_launch_template',
+                domainId: domains.compute,
+                name: 'app-lt',
+                arguments: {
+                    name: `${cfg.projectName}-app`,
+                    instance_type: cfg.instanceType,
+                    image_id: 'ami-0c55b159cbfafe1f0', // Amazon Linux 2
+                    vpc_security_group_ids: [`\${aws_security_group.${sgWebId}.id}`],
+                    user_data: Buffer.from(`#!/bin/bash
+yum update -y
+yum install -y httpd
+systemctl start httpd
+systemctl enable httpd
+echo "<h1>Hello from ${cfg.projectName}</h1>" > /var/www/html/index.html
+`).toString('base64'),
+                    tags: getTags(cfg.projectName, 'launch-template')
+                },
+                deployment: { strategy: 'single' }
+            });
+
+            // Auto Scaling Group
             createResource({
                 type: 'aws_autoscaling_group',
                 domainId: domains.compute,
-                name: `asg-${env}`,
-                environment: env,
+                name: 'app-asg',
                 arguments: {
-                    name: `${cfg.projectName}-asg-${env}`,
-                    min_size: scaling.min,
-                    max_size: scaling.max,
-                    desired_capacity: scaling.min,
-                    vpc_zone_identifier: azs.map((az) => `\${aws_subnet.subnet-private-${env}-${az.split('-').pop()}.id}`),
+                    name: `${cfg.projectName}-asg`,
+                    min_size: cfg.minInstances,
+                    max_size: cfg.maxInstances,
+                    desired_capacity: cfg.minInstances,
+                    vpc_zone_identifier: azs.map((az) => `\${aws_subnet.subnet-private-${az.split('-').pop()}.id}`),
+                    target_group_arns: cfg.enableALB ? [`\${aws_lb_target_group.main-tg.arn}`] : [],
                     launch_template: {
-                        id: `\${aws_launch_template.app-${env}.id}`,
+                        id: `\${aws_launch_template.${launchTemplateId}.id}`,
                         version: '$Latest'
                     },
-                    tags: getTags(cfg.projectName, env, 'asg')
+                    health_check_type: cfg.enableALB ? 'ELB' : 'EC2',
+                    health_check_grace_period: 300,
+                    tags: [
+                        {
+                            key: 'Name',
+                            value: `${cfg.projectName}-instance`,
+                            propagate_at_launch: true
+                        }
+                    ]
                 },
                 deployment: { strategy: 'multi-az' }
-            });
-
-            // Launch Template
-            createResource({
-                type: 'aws_launch_template',
-                domainId: domains.compute,
-                name: `lt-app-${env}`,
-                environment: env,
-                arguments: {
-                    name: `${cfg.projectName}-app-${env}`,
-                    instance_type: instanceType,
-                    image_id: 'ami-0c55b159cbfafe1f0', // Amazon Linux 2
-                    vpc_security_group_ids: [`\${aws_security_group.sg-web-${env}.id}`],
-                    tags: getTags(cfg.projectName, env, 'launch-template')
-                },
-                deployment: { strategy: 'single' }
             });
         } else {
             // ECS Cluster
             createResource({
                 type: 'aws_ecs_cluster',
                 domainId: domains.compute,
-                name: `ecs-cluster-${env}`,
-                environment: env,
+                name: 'app-cluster',
                 arguments: {
-                    name: `${cfg.projectName}-cluster-${env}`,
-                    tags: getTags(cfg.projectName, env, 'ecs-cluster')
+                    name: `${cfg.projectName}-cluster`,
+                    tags: getTags(cfg.projectName, 'ecs-cluster')
                 },
                 deployment: { strategy: 'single' }
             });
@@ -290,59 +466,41 @@ const StackConfigWizard: React.FC<StackConfigWizardProps> = ({ onComplete, onCan
 
         // 4. DATABASE
         if (cfg.databaseEngine !== 'none') {
-            const dbInstanceClass = getDBInstanceClass(env);
-            const storage = getDBStorage(env);
+            // DB Subnet Group
+            const dbSubnetGroupId = createResource({
+                type: 'aws_db_subnet_group',
+                domainId: domains.data,
+                name: 'db-subnet-group',
+                arguments: {
+                    name: `${cfg.projectName}-db-subnet`,
+                    subnet_ids: azs.map((az) => `\${aws_subnet.subnet-private-${az.split('-').pop()}.id}`),
+                    tags: getTags(cfg.projectName, 'db-subnet-group')
+                },
+                deployment: { strategy: 'single' }
+            });
 
+            // RDS Instance
             createResource({
                 type: 'aws_db_instance',
                 domainId: domains.data,
-                name: `rds-${env}`,
-                environment: env,
+                name: 'main-db',
                 arguments: {
-                    identifier: `${cfg.projectName}-db-${env}`,
+                    identifier: `${cfg.projectName}-db`,
                     engine: cfg.databaseEngine,
-                    instance_class: dbInstanceClass,
-                    allocated_storage: storage,
+                    instance_class: cfg.dbInstanceClass,
+                    allocated_storage: cfg.dbStorage,
                     storage_type: 'gp3',
-                    multi_az: cfg.multiAZ[env],
-                    db_subnet_group_name: `\${aws_db_subnet_group.main-${env}.name}`,
-                    vpc_security_group_ids: [`\${aws_security_group.sg-db-${env}.id}`],
-                    backup_retention_period: env === 'prod' ? 7 : 1,
-                    skip_final_snapshot: env !== 'prod',
-                    deletion_protection: env === 'prod',
+                    username: 'admin',
+                    password: `\${var.db_password}`,
+                    multi_az: cfg.multiAZ,
+                    db_subnet_group_name: `\${aws_db_subnet_group.${dbSubnetGroupId}.name}`,
+                    vpc_security_group_ids: [`\${aws_security_group.${sgDbId}.id}`],
+                    backup_retention_period: 7,
+                    skip_final_snapshot: true,
                     storage_encrypted: true,
-                    tags: getTags(cfg.projectName, env, 'rds')
+                    tags: getTags(cfg.projectName, 'rds')
                 },
-                deployment: { strategy: cfg.multiAZ[env] ? 'multi-az' : 'single' }
-            });
-
-            // DB Subnet Group
-            createResource({
-                type: 'aws_db_subnet_group',
-                domainId: domains.data,
-                name: `db-subnet-group-${env}`,
-                environment: env,
-                arguments: {
-                    name: `${cfg.projectName}-db-subnet-${env}`,
-                    subnet_ids: azs.map((az) => `\${aws_subnet.subnet-private-${env}-${az.split('-').pop()}.id}`),
-                    tags: getTags(cfg.projectName, env, 'db-subnet-group')
-                },
-                deployment: { strategy: 'single' }
-            });
-
-            // DB Security Group
-            createResource({
-                type: 'aws_security_group',
-                domainId: domains.networking,
-                name: `sg-db-${env}`,
-                environment: env,
-                arguments: {
-                    name: `${cfg.projectName}-db-${env}`,
-                    description: 'Security group for database',
-                    vpc_id: `\${aws_vpc.${vpcId}.id}`,
-                    tags: getTags(cfg.projectName, env, 'sg-db')
-                },
-                deployment: { strategy: 'single' }
+                deployment: { strategy: cfg.multiAZ ? 'multi-az' : 'single' }
             });
         }
 
@@ -350,30 +508,41 @@ const StackConfigWizard: React.FC<StackConfigWizardProps> = ({ onComplete, onCan
         createResource({
             type: 'aws_s3_bucket',
             domainId: domains.storage,
-            name: `s3-assets-${env}`,
-            environment: env,
+            name: 's3-assets',
             arguments: {
-                bucket: `${cfg.projectName}-assets-${env}-${Date.now()}`,
-                tags: getTags(cfg.projectName, env, 's3-assets')
+                bucket: `${cfg.projectName}-assets-${Date.now()}`,
+                tags: getTags(cfg.projectName, 's3-assets')
             },
             deployment: { strategy: 'single' }
         });
 
         // 6. OPTIONAL: Redis
         if (cfg.enableRedis) {
+            // Redis Subnet Group
+            const redisSubnetGroupId = createResource({
+                type: 'aws_elasticache_subnet_group',
+                domainId: domains.data,
+                name: 'redis-subnet-group',
+                arguments: {
+                    name: `${cfg.projectName}-redis-subnet`,
+                    subnet_ids: azs.map((az) => `\${aws_subnet.subnet-private-${az.split('-').pop()}.id}`)
+                },
+                deployment: { strategy: 'single' }
+            });
+
             createResource({
                 type: 'aws_elasticache_cluster',
                 domainId: domains.data,
-                name: `redis-${env}`,
-                environment: env,
+                name: 'main-redis',
                 arguments: {
-                    cluster_id: `${cfg.projectName}-redis-${env}`,
+                    cluster_id: `${cfg.projectName}-redis`,
                     engine: 'redis',
-                    node_type: env === 'prod' ? 'cache.t3.small' : 'cache.t3.micro',
+                    node_type: 'cache.t3.micro',
                     num_cache_nodes: 1,
                     parameter_group_name: 'default.redis7',
                     port: 6379,
-                    tags: getTags(cfg.projectName, env, 'redis')
+                    subnet_group_name: `\${aws_elasticache_subnet_group.${redisSubnetGroupId}.name}`,
+                    tags: getTags(cfg.projectName, 'redis')
                 },
                 deployment: { strategy: 'single' }
             });
@@ -381,17 +550,46 @@ const StackConfigWizard: React.FC<StackConfigWizardProps> = ({ onComplete, onCan
 
         // 7. OPTIONAL: Bastion
         if (cfg.enableBastion) {
+            const sgBastionId = createResource({
+                type: 'aws_security_group',
+                domainId: domains.networking,
+                name: 'sg-bastion',
+                arguments: {
+                    name: `${cfg.projectName}-bastion`,
+                    description: 'Security group for bastion host',
+                    vpc_id: `\${aws_vpc.${vpcId}.id}`,
+                    ingress: [
+                        {
+                            from_port: 22,
+                            to_port: 22,
+                            protocol: 'tcp',
+                            cidr_blocks: ['0.0.0.0/0']  // Note: Should restrict to your IP
+                        }
+                    ],
+                    egress: [
+                        {
+                            from_port: 0,
+                            to_port: 0,
+                            protocol: '-1',
+                            cidr_blocks: ['0.0.0.0/0']
+                        }
+                    ],
+                    tags: getTags(cfg.projectName, 'sg-bastion')
+                },
+                deployment: { strategy: 'single' }
+            });
+
             createResource({
                 type: 'aws_instance',
                 domainId: domains.compute,
-                name: `bastion-${env}`,
-                environment: env,
+                name: 'bastion',
                 arguments: {
                     ami: 'ami-0c55b159cbfafe1f0',
                     instance_type: 't3.micro',
-                    subnet_id: `\${aws_subnet.subnet-public-${env}-${azs[0].split('-').pop()}.id}`,
-                    vpc_security_group_ids: [`\${aws_security_group.sg-bastion-${env}.id}`],
-                    tags: getTags(cfg.projectName, env, 'bastion')
+                    subnet_id: `\${aws_subnet.subnet-public-${azs[0].split('-').pop()}.id}`,
+                    vpc_security_group_ids: [`\${aws_security_group.${sgBastionId}.id}`],
+                    associate_public_ip_address: true,
+                    tags: getTags(cfg.projectName, 'bastion')
                 },
                 deployment: { strategy: 'single' }
             });
@@ -401,10 +599,9 @@ const StackConfigWizard: React.FC<StackConfigWizardProps> = ({ onComplete, onCan
         createResource({
             type: 'aws_iam_role',
             domainId: domains.identity,
-            name: `iam-role-ec2-${env}`,
-            environment: env,
+            name: 'iam-role-ec2',
             arguments: {
-                name: `${cfg.projectName}-ec2-role-${env}`,
+                name: `${cfg.projectName}-ec2-role`,
                 assume_role_policy: JSON.stringify({
                     Version: '2012-10-17',
                     Statement: [{
@@ -413,7 +610,7 @@ const StackConfigWizard: React.FC<StackConfigWizardProps> = ({ onComplete, onCan
                         Action: 'sts:AssumeRole'
                     }]
                 }),
-                tags: getTags(cfg.projectName, env, 'iam-role')
+                tags: getTags(cfg.projectName, 'iam-role')
             },
             deployment: { strategy: 'single' }
         });
@@ -422,12 +619,11 @@ const StackConfigWizard: React.FC<StackConfigWizardProps> = ({ onComplete, onCan
         createResource({
             type: 'aws_cloudwatch_log_group',
             domainId: domains.observability,
-            name: `logs-app-${env}`,
-            environment: env,
+            name: 'logs-app',
             arguments: {
-                name: `/aws/${cfg.projectName}/${env}/app`,
-                retention_in_days: env === 'prod' ? 30 : 7,
-                tags: getTags(cfg.projectName, env, 'logs')
+                name: `/aws/${cfg.projectName}/app`,
+                retention_in_days: 7,
+                tags: getTags(cfg.projectName, 'logs')
             },
             deployment: { strategy: 'single' }
         });
@@ -437,22 +633,40 @@ const StackConfigWizard: React.FC<StackConfigWizardProps> = ({ onComplete, onCan
             createResource({
                 type: 'aws_cloudfront_distribution',
                 domainId: domains.edge,
-                name: `cdn-${env}`,
-                environment: env,
+                name: 'main-cdn',
                 arguments: {
                     enabled: true,
                     default_root_object: 'index.html',
-                    origin: {
-                        domain_name: `\${aws_s3_bucket.s3-assets-${env}.bucket_regional_domain_name}`,
-                        origin_id: 'S3-origin'
-                    },
+                    origin: [
+                        {
+                            domain_name: `\${aws_s3_bucket.s3-assets.bucket_regional_domain_name}`,
+                            origin_id: 'S3-origin',
+                            s3_origin_config: {
+                                origin_access_identity: ''
+                            }
+                        }
+                    ],
                     default_cache_behavior: {
                         allowed_methods: ['GET', 'HEAD'],
                         cached_methods: ['GET', 'HEAD'],
                         target_origin_id: 'S3-origin',
-                        viewer_protocol_policy: 'redirect-to-https'
+                        viewer_protocol_policy: 'redirect-to-https',
+                        forwarded_values: {
+                            query_string: false,
+                            cookies: {
+                                forward: 'none'
+                            }
+                        }
                     },
-                    tags: getTags(cfg.projectName, env, 'cloudfront')
+                    restrictions: {
+                        geo_restriction: {
+                            restriction_type: 'none'
+                        }
+                    },
+                    viewer_certificate: {
+                        cloudfront_default_certificate: true
+                    },
+                    tags: getTags(cfg.projectName, 'cloudfront')
                 },
                 deployment: { strategy: 'single' }
             });
@@ -496,7 +710,6 @@ const StackConfigWizard: React.FC<StackConfigWizardProps> = ({ onComplete, onCan
         type: string;
         domainId: string;
         name: string;
-        environment: Environment;
         availabilityZone?: string;
         arguments: Record<string, any>;
         deployment: { strategy: DeploymentStrategy };
@@ -519,39 +732,12 @@ const StackConfigWizard: React.FC<StackConfigWizardProps> = ({ onComplete, onCan
         return params.name;
     };
 
-    // Helper functions
-    const getVPCCIDR = (env: Environment): string => {
-        const map = { dev: '10.0.0.0/16', staging: '10.1.0.0/16', prod: '10.2.0.0/16' };
-        return map[env];
-    };
-
-    const getSubnetCIDR = (env: Environment, index: number): string => {
-        const base = { dev: 0, staging: 1, prod: 2 };
-        return `10.${base[env]}.${index}.0/24`;
-    };
-
-    const getInstanceType = (env: Environment, computeType: ComputeType): string => {
-        if (computeType === 'ecs') return 't3.micro';
-        const map = { dev: 't3.micro', staging: 't3.small', prod: 't3.medium' };
-        return map[env];
-    };
-
-    const getDBInstanceClass = (env: Environment): string => {
-        const map = { dev: 'db.t3.micro', staging: 'db.t3.small', prod: 'db.t3.medium' };
-        return map[env];
-    };
-
-    const getDBStorage = (env: Environment): number => {
-        const map = { dev: 20, staging: 50, prod: 100 };
-        return map[env];
-    };
-
     const getAZsForRegion = (region: string, count: number): string[] => {
         const azMap: Record<string, string[]> = {
-            'us-east-1': ['us-east-1a', 'us-east-1b', 'us-east-1c', 'us-east-1d', 'us-east-1e', 'us-east-1f'],
+            'us-east-1': ['us-east-1a', 'us-east-1b', 'us-east-1c'],
             'us-east-2': ['us-east-2a', 'us-east-2b', 'us-east-2c'],
             'us-west-1': ['us-west-1a', 'us-west-1b', 'us-west-1c'],
-            'us-west-2': ['us-west-2a', 'us-west-2b', 'us-west-2c', 'us-west-2d'],
+            'us-west-2': ['us-west-2a', 'us-west-2b', 'us-west-2c'],
             'eu-west-1': ['eu-west-1a', 'eu-west-1b', 'eu-west-1c'],
             'eu-central-1': ['eu-central-1a', 'eu-central-1b', 'eu-central-1c'],
             'ap-southeast-1': ['ap-southeast-1a', 'ap-southeast-1b', 'ap-southeast-1c'],
@@ -560,28 +746,23 @@ const StackConfigWizard: React.FC<StackConfigWizardProps> = ({ onComplete, onCan
         return (azMap[region] || azMap['us-east-1']).slice(0, count);
     };
 
-    const getTags = (projectName: string, env: Environment, resourceName: string) => ({
+    const getTags = (projectName: string, resourceName: string) => ({
         Project: projectName,
-        Environment: env,
         ManagedBy: 'Terramod',
         Stack: '3-tier-web-app',
-        Name: `${projectName}-${resourceName}-${env}`
+        Name: `${projectName}-${resourceName}`
     });
 
     const isStepValid = (stepNum: number): boolean => {
         switch (stepNum) {
             case 1:
-                return config.projectName.length > 0 && config.environments.length > 0;
+                return config.projectName.length > 0;
             case 2:
-                return true; // AZ defaults are always valid
+                return true;
             case 3:
-                return true; // Defaults are always valid
+                return true;
             case 4:
-                return true; // Database can be 'none'
-            case 5:
-                return true; // Optional
-            case 6:
-                return true; // Optional
+                return true;
             default:
                 return false;
         }
@@ -591,8 +772,8 @@ const StackConfigWizard: React.FC<StackConfigWizardProps> = ({ onComplete, onCan
     const renderStep1 = () => (
         <div className="space-y-6">
             <div>
-                <h2 className="text-2xl font-bold text-white mb-2">Project & Environment</h2>
-                <p className="text-slate-400">Basic configuration for your infrastructure</p>
+                <h2 className="text-2xl font-bold text-white mb-2">Project Configuration</h2>
+                <p className="text-slate-400">Basic settings for your 3-tier web application</p>
             </div>
 
             <div>
@@ -603,7 +784,7 @@ const StackConfigWizard: React.FC<StackConfigWizardProps> = ({ onComplete, onCan
                     type="text"
                     value={config.projectName}
                     onChange={(e) => updateConfig({ projectName: e.target.value })}
-                    placeholder="my-ecommerce"
+                    placeholder="my-webapp"
                     className="w-full px-4 py-3 bg-white/5 border border-white/10 text-white rounded-lg focus:border-violet-400/50 focus:bg-white/10 focus:outline-none transition-all placeholder-white/30"
                 />
                 <p className="text-xs text-slate-500 mt-1">Used for resource naming and tagging</p>
@@ -625,32 +806,17 @@ const StackConfigWizard: React.FC<StackConfigWizardProps> = ({ onComplete, onCan
             </div>
 
             <div>
-                <label className="block text-sm font-medium text-slate-300 mb-3">
-                    Environments <span className="text-red-400">*</span>
-                </label>
-                <div className="flex gap-3">
-                    {(['dev', 'staging', 'prod'] as Environment[]).map((env) => {
-                        const isSelected = config.environments.includes(env);
-                        return (
-                            <button
-                                key={env}
-                                onClick={() => {
-                                    const newEnvs = isSelected
-                                        ? config.environments.filter((e) => e !== env)
-                                        : [...config.environments, env];
-                                    updateConfig({ environments: newEnvs });
-                                }}
-                                className={`flex-1 py-3 px-4 rounded-lg border-2 font-medium transition-all ${isSelected
-                                        ? 'border-violet-500 bg-violet-500/20 text-violet-300'
-                                        : 'border-white/10 bg-white/5 text-slate-400 hover:border-white/20'
-                                    }`}
-                            >
-                                {env.charAt(0).toUpperCase() + env.slice(1)}
-                            </button>
-                        );
-                    })}
-                </div>
-                <p className="text-xs text-slate-500 mt-2">Select one or more environments to deploy</p>
+                <label className="block text-sm font-medium text-slate-300 mb-2">Availability Zones</label>
+                <select
+                    value={config.availabilityZones}
+                    onChange={(e) => updateConfig({ availabilityZones: parseInt(e.target.value) })}
+                    className="w-full px-4 py-3 bg-white/5 border border-white/10 text-white rounded-lg focus:border-violet-400/50 focus:bg-white/10 focus:outline-none transition-all"
+                >
+                    <option value="1" className="bg-slate-900">1 AZ (dev/testing)</option>
+                    <option value="2" className="bg-slate-900">2 AZs (balanced)</option>
+                    <option value="3" className="bg-slate-900">3 AZs (high availability)</option>
+                </select>
+                <p className="text-xs text-slate-500 mt-1">More AZs = higher availability and cost</p>
             </div>
         </div>
     );
@@ -658,62 +824,8 @@ const StackConfigWizard: React.FC<StackConfigWizardProps> = ({ onComplete, onCan
     const renderStep2 = () => (
         <div className="space-y-6">
             <div>
-                <h2 className="text-2xl font-bold text-white mb-2">Networking</h2>
-                <p className="text-slate-400">Configure availability zones per environment</p>
-            </div>
-
-            {config.environments.map((env) => (
-                <div key={env} className="p-4 bg-white/5 border border-white/10 rounded-lg">
-                    <label className="block text-sm font-medium text-slate-300 mb-3 capitalize">
-                        {env} Environment
-                    </label>
-                    <div className="flex items-center gap-4">
-                        <span className="text-sm text-slate-400">Availability Zones:</span>
-                        <select
-                            value={config.availabilityZones[env]}
-                            onChange={(e) =>
-                                updateConfig({
-                                    availabilityZones: {
-                                        ...config.availabilityZones,
-                                        [env]: parseInt(e.target.value)
-                                    }
-                                })
-                            }
-                            className="px-4 py-2 bg-white/5 border border-white/10 text-white rounded-lg focus:border-violet-400/50 focus:outline-none"
-                        >
-                            {[1, 2, 3].map((num) => (
-                                <option key={num} value={num} className="bg-slate-900">
-                                    {num} AZ{num > 1 ? 's' : ''}
-                                </option>
-                            ))}
-                        </select>
-                        <span className="text-xs text-slate-500">
-                            (Default: Dev=1, Staging=2, Prod=3)
-                        </span>
-                    </div>
-                </div>
-            ))}
-
-            <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-                <div className="flex items-start gap-3">
-                    <span className="text-2xl">💡</span>
-                    <div>
-                        <p className="text-sm text-blue-300 font-medium mb-1">Auto-configured networking</p>
-                        <p className="text-xs text-blue-400">
-                            VPC CIDR, public/private subnets, Internet Gateway, and NAT Gateways will be automatically
-                            configured with secure defaults.
-                        </p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-
-    const renderStep3 = () => (
-        <div className="space-y-6">
-            <div>
-                <h2 className="text-2xl font-bold text-white mb-2">Compute / Application Layer</h2>
-                <p className="text-slate-400">Choose compute platform and scaling settings</p>
+                <h2 className="text-2xl font-bold text-white mb-2">Compute Configuration</h2>
+                <p className="text-slate-400">Application server settings</p>
             </div>
 
             <div>
@@ -741,90 +853,65 @@ const StackConfigWizard: React.FC<StackConfigWizardProps> = ({ onComplete, onCan
                 </div>
             </div>
 
-            {config.environments.map((env) => (
-                <div key={env} className="p-4 bg-white/5 border border-white/10 rounded-lg">
-                    <label className="block text-sm font-medium text-slate-300 mb-3 capitalize">
-                        {env} - Instance Scaling
-                    </label>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs text-slate-400 mb-1">Min Instances</label>
-                            <input
-                                type="number"
-                                min="1"
-                                value={config.instanceScaling[env].min}
-                                onChange={(e) =>
-                                    updateConfig({
-                                        instanceScaling: {
-                                            ...config.instanceScaling,
-                                            [env]: {
-                                                ...config.instanceScaling[env],
-                                                min: parseInt(e.target.value)
-                                            }
-                                        }
-                                    })
-                                }
-                                className="w-full px-3 py-2 bg-white/5 border border-white/10 text-white rounded-lg focus:border-violet-400/50 focus:outline-none"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-xs text-slate-400 mb-1">Max Instances</label>
-                            <input
-                                type="number"
-                                min="1"
-                                value={config.instanceScaling[env].max}
-                                onChange={(e) =>
-                                    updateConfig({
-                                        instanceScaling: {
-                                            ...config.instanceScaling,
-                                            [env]: {
-                                                ...config.instanceScaling[env],
-                                                max: parseInt(e.target.value)
-                                            }
-                                        }
-                                    })
-                                }
-                                className="w-full px-3 py-2 bg-white/5 border border-white/10 text-white rounded-lg focus:border-violet-400/50 focus:outline-none"
-                            />
-                        </div>
-                    </div>
+            {config.computeType === 'ec2' && (
+                <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">Instance Type</label>
+                    <select
+                        value={config.instanceType}
+                        onChange={(e) => updateConfig({ instanceType: e.target.value })}
+                        className="w-full px-4 py-3 bg-white/5 border border-white/10 text-white rounded-lg focus:border-violet-400/50 focus:outline-none"
+                    >
+                        <option value="t3.micro" className="bg-slate-900">t3.micro (1 vCPU, 1GB RAM) - ~$7/mo</option>
+                        <option value="t3.small" className="bg-slate-900">t3.small (2 vCPU, 2GB RAM) - ~$15/mo</option>
+                        <option value="t3.medium" className="bg-slate-900">t3.medium (2 vCPU, 4GB RAM) - ~$30/mo</option>
+                        <option value="t3.large" className="bg-slate-900">t3.large (2 vCPU, 8GB RAM) - ~$60/mo</option>
+                    </select>
                 </div>
-            ))}
+            )}
 
-            <div>
-                <label className="flex items-center gap-3 p-4 bg-white/5 border border-white/10 rounded-lg cursor-pointer hover:bg-white/10 transition-all">
+            <div className="grid grid-cols-2 gap-4">
+                <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">Min Instances</label>
                     <input
-                        type="checkbox"
-                        checked={config.enableALB}
-                        onChange={(e) => updateConfig({ enableALB: e.target.checked })}
-                        className="w-5 h-5 rounded bg-white/5 border-white/10 text-violet-500 focus:ring-violet-500/50"
+                        type="number"
+                        min="1"
+                        value={config.minInstances}
+                        onChange={(e) => updateConfig({ minInstances: parseInt(e.target.value) })}
+                        className="w-full px-4 py-3 bg-white/5 border border-white/10 text-white rounded-lg focus:border-violet-400/50 focus:outline-none"
                     />
-                    <div>
-                        <div className="font-medium text-white">Enable Application Load Balancer</div>
-                        <div className="text-xs text-slate-400">Recommended for web applications</div>
-                    </div>
-                </label>
-            </div>
-
-            <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-                <div className="flex items-start gap-3">
-                    <span className="text-2xl">💡</span>
-                    <div>
-                        <p className="text-sm text-blue-300 font-medium mb-1">Auto-configured instance types</p>
-                        <p className="text-xs text-blue-400">
-                            Dev: t3.micro, Staging: t3.small, Prod: t3.medium (optimized for cost and performance)
-                        </p>
-                    </div>
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">Max Instances</label>
+                    <input
+                        type="number"
+                        min="1"
+                        value={config.maxInstances}
+                        onChange={(e) => updateConfig({ maxInstances: parseInt(e.target.value) })}
+                        className="w-full px-4 py-3 bg-white/5 border border-white/10 text-white rounded-lg focus:border-violet-400/50 focus:outline-none"
+                    />
                 </div>
             </div>
+
+            <label className="flex items-center gap-3 p-4 bg-white/5 border border-white/10 rounded-lg cursor-pointer hover:bg-white/10 transition-all">
+                <input
+                    type="checkbox"
+                    checked={config.enableALB}
+                    onChange={(e) => updateConfig({ enableALB: e.target.checked })}
+                    className="w-5 h-5 rounded bg-white/5 border-white/10 text-violet-500 focus:ring-violet-500/50"
+                />
+                <div>
+                    <div className="font-medium text-white">Enable Application Load Balancer</div>
+                    <div className="text-xs text-slate-400">Distributes traffic across instances (~$16/mo)</div>
+                </div>
+            </label>
         </div>
     );
 
-    const renderStep4 = () => (
+    const renderStep3 = () => (
         <div className="space-y-6">
             <div>
-                <h2 className="text-2xl font-bold text-white mb-2">Database Layer</h2>
-                <p className="text-slate-400">Configure your database requirements</p>
+                <h2 className="text-2xl font-bold text-white mb-2">Database Configuration</h2>
+                <p className="text-slate-400">Choose your database engine and settings</p>
             </div>
 
             <div>
@@ -854,56 +941,52 @@ const StackConfigWizard: React.FC<StackConfigWizardProps> = ({ onComplete, onCan
             {config.databaseEngine !== 'none' && (
                 <>
                     <div>
-                        <label className="block text-sm font-medium text-slate-300 mb-3">Multi-AZ Deployment</label>
-                        {config.environments.map((env) => (
-                            <label
-                                key={env}
-                                className="flex items-center gap-3 p-3 bg-white/5 border border-white/10 rounded-lg mb-2 cursor-pointer hover:bg-white/10 transition-all"
-                            >
-                                <input
-                                    type="checkbox"
-                                    checked={config.multiAZ[env]}
-                                    onChange={(e) =>
-                                        updateConfig({
-                                            multiAZ: {
-                                                ...config.multiAZ,
-                                                [env]: e.target.checked
-                                            }
-                                        })
-                                    }
-                                    className="w-5 h-5 rounded bg-white/5 border-white/10 text-violet-500 focus:ring-violet-500/50"
-                                />
-                                <div className="flex-1">
-                                    <div className="font-medium text-white capitalize">{env}</div>
-                                    <div className="text-xs text-slate-400">
-                                        {config.multiAZ[env] ? 'High availability enabled' : 'Single-AZ (lower cost)'}
-                                    </div>
-                                </div>
-                            </label>
-                        ))}
+                        <label className="block text-sm font-medium text-slate-300 mb-2">Instance Class</label>
+                        <select
+                            value={config.dbInstanceClass}
+                            onChange={(e) => updateConfig({ dbInstanceClass: e.target.value })}
+                            className="w-full px-4 py-3 bg-white/5 border border-white/10 text-white rounded-lg focus:border-violet-400/50 focus:outline-none"
+                        >
+                            <option value="db.t3.micro" className="bg-slate-900">db.t3.micro (1 vCPU, 1GB) - ~$12/mo</option>
+                            <option value="db.t3.small" className="bg-slate-900">db.t3.small (2 vCPU, 2GB) - ~$25/mo</option>
+                            <option value="db.t3.medium" className="bg-slate-900">db.t3.medium (2 vCPU, 4GB) - ~$50/mo</option>
+                        </select>
                     </div>
 
-                    <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-                        <div className="flex items-start gap-3">
-                            <span className="text-2xl">🔒</span>
-                            <div>
-                                <p className="text-sm text-blue-300 font-medium mb-1">Security built-in</p>
-                                <p className="text-xs text-blue-400">
-                                    Encryption at rest, automated backups, and deletion protection (Prod) are automatically configured.
-                                </p>
-                            </div>
-                        </div>
+                    <div>
+                        <label className="block text-sm font-medium text-slate-300 mb-2">Storage (GB)</label>
+                        <input
+                            type="number"
+                            min="20"
+                            value={config.dbStorage}
+                            onChange={(e) => updateConfig({ dbStorage: parseInt(e.target.value) })}
+                            className="w-full px-4 py-3 bg-white/5 border border-white/10 text-white rounded-lg focus:border-violet-400/50 focus:outline-none"
+                        />
+                        <p className="text-xs text-slate-500 mt-1">Minimum 20GB required</p>
                     </div>
+
+                    <label className="flex items-center gap-3 p-4 bg-white/5 border border-white/10 rounded-lg cursor-pointer hover:bg-white/10 transition-all">
+                        <input
+                            type="checkbox"
+                            checked={config.multiAZ}
+                            onChange={(e) => updateConfig({ multiAZ: e.target.checked })}
+                            className="w-5 h-5 rounded bg-white/5 border-white/10 text-violet-500 focus:ring-violet-500/50"
+                        />
+                        <div>
+                            <div className="font-medium text-white">Multi-AZ Deployment</div>
+                            <div className="text-xs text-slate-400">High availability (doubles DB cost)</div>
+                        </div>
+                    </label>
                 </>
             )}
         </div>
     );
 
-    const renderStep5 = () => (
+    const renderStep4 = () => (
         <div className="space-y-6">
             <div>
                 <h2 className="text-2xl font-bold text-white mb-2">Optional Components</h2>
-                <p className="text-slate-400">Additional services (disabled by default)</p>
+                <p className="text-slate-400">Additional services you can add</p>
             </div>
 
             <label className="flex items-start gap-4 p-5 bg-white/5 border border-white/10 rounded-lg cursor-pointer hover:bg-white/10 transition-all">
@@ -919,7 +1002,7 @@ const StackConfigWizard: React.FC<StackConfigWizardProps> = ({ onComplete, onCan
                         <div className="font-semibold text-white">ElastiCache Redis</div>
                     </div>
                     <div className="text-sm text-slate-400">
-                        In-memory caching for improved performance. Adds ~$15-30/month per environment.
+                        In-memory caching for improved performance (~$12/mo)
                     </div>
                 </div>
             </label>
@@ -937,33 +1020,10 @@ const StackConfigWizard: React.FC<StackConfigWizardProps> = ({ onComplete, onCan
                         <div className="font-semibold text-white">Bastion Host</div>
                     </div>
                     <div className="text-sm text-slate-400">
-                        Secure SSH access to private resources. Adds ~$8/month per environment.
+                        Secure SSH access to private resources (~$7/mo)
                     </div>
                 </div>
             </label>
-
-            <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
-                <div className="flex items-start gap-3">
-                    <span className="text-2xl">✅</span>
-                    <div>
-                        <p className="text-sm text-green-300 font-medium mb-1">Always included (no extra cost)</p>
-                        <ul className="text-xs text-green-400 space-y-1">
-                            <li>• CloudWatch Logs for application monitoring</li>
-                            <li>• IAM roles with least-privilege access</li>
-                            <li>• S3 bucket for static assets</li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-
-    const renderStep6 = () => (
-        <div className="space-y-6">
-            <div>
-                <h2 className="text-2xl font-bold text-white mb-2">Frontend (Optional)</h2>
-                <p className="text-slate-400">Placeholder frontend for development and testing</p>
-            </div>
 
             <label className="flex items-start gap-4 p-5 bg-white/5 border border-white/10 rounded-lg cursor-pointer hover:bg-white/10 transition-all">
                 <input
@@ -973,23 +1033,13 @@ const StackConfigWizard: React.FC<StackConfigWizardProps> = ({ onComplete, onCan
                     className="mt-1 w-5 h-5 rounded bg-white/5 border-white/10 text-violet-500 focus:ring-violet-500/50"
                 />
                 <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                        <span className="text-2xl">🌐</span>
-                        <div className="font-semibold text-white">Include Sample Frontend</div>
+                    <div className="flex items-center gap-2 mb-1">
+                        <span className="text-xl">🌐</span>
+                        <div className="font-semibold text-white">CloudFront CDN</div>
                     </div>
-                    <div className="text-sm text-slate-400 mb-3">
-                        Basic HTML/CSS hosted on S3 + CloudFront for testing your backend. You can replace this with your own frontend later.
+                    <div className="text-sm text-slate-400">
+                        Global content delivery network for static assets (~$1/mo + data transfer)
                     </div>
-                    {config.includeFrontend && (
-                        <div className="p-3 bg-white/5 border border-white/10 rounded text-xs text-slate-400">
-                            <div className="font-medium text-white mb-1">Includes:</div>
-                            <ul className="space-y-1">
-                                <li>• S3 bucket configured for static website hosting</li>
-                                <li>• CloudFront CDN for global distribution</li>
-                                <li>• HTTPS enforced via CloudFront</li>
-                            </ul>
-                        </div>
-                    )}
                 </div>
             </label>
 
@@ -999,7 +1049,7 @@ const StackConfigWizard: React.FC<StackConfigWizardProps> = ({ onComplete, onCan
                     <div>
                         <p className="text-sm text-purple-300 font-medium mb-1">Ready to generate!</p>
                         <p className="text-xs text-purple-400">
-                            Review your configuration and click "Generate Infrastructure" to create your stack.
+                            Click "Generate Infrastructure" to create your Terraform project.
                         </p>
                     </div>
                 </div>
@@ -1017,10 +1067,6 @@ const StackConfigWizard: React.FC<StackConfigWizardProps> = ({ onComplete, onCan
                 return renderStep3();
             case 4:
                 return renderStep4();
-            case 5:
-                return renderStep5();
-            case 6:
-                return renderStep6();
             default:
                 return null;
         }
@@ -1028,12 +1074,12 @@ const StackConfigWizard: React.FC<StackConfigWizardProps> = ({ onComplete, onCan
 
     return (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 border border-white/10 rounded-2xl shadow-2xl w-full max-w-3xl h-[85vh] flex flex-col">
-                {/* Header - Fixed */}
-                <div className="flex-shrink-0 p-6 border-b border-white/10">
+            <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 border border-white/10 rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+                {/* Header */}
+                <div className="p-6 border-b border-white/10">
                     <h1 className="text-2xl font-bold text-white mb-2">3-Tier Web App Wizard</h1>
                     <div className="flex items-center gap-2">
-                        {[1, 2, 3, 4, 5, 6].map((num) => (
+                        {[1, 2, 3, 4].map((num) => (
                             <div
                                 key={num}
                                 className={`h-1 flex-1 rounded-full transition-all ${num <= step ? 'bg-violet-500' : 'bg-white/10'
@@ -1042,17 +1088,17 @@ const StackConfigWizard: React.FC<StackConfigWizardProps> = ({ onComplete, onCan
                         ))}
                     </div>
                     <p className="text-sm text-slate-400 mt-2">
-                        Step {step} of 6
+                        Step {step} of 4
                     </p>
                 </div>
 
-                {/* Content - Scrollable */}
-                <div className="flex-1 overflow-y-auto p-6 min-h-0">
+                {/* Content */}
+                <div className="flex-1 overflow-y-auto p-6">
                     {renderCurrentStep()}
                 </div>
 
-                {/* Footer - Fixed */}
-                <div className="flex-shrink-0 p-6 border-t border-white/10 flex items-center justify-between">
+                {/* Footer */}
+                <div className="p-6 border-t border-white/10 flex items-center justify-between">
                     <button
                         onClick={onCancel}
                         className="px-6 py-2.5 rounded-lg font-medium text-slate-400 hover:text-white hover:bg-white/5 transition-all"
@@ -1070,7 +1116,7 @@ const StackConfigWizard: React.FC<StackConfigWizardProps> = ({ onComplete, onCan
                             </button>
                         )}
 
-                        {step < 6 ? (
+                        {step < 4 ? (
                             <button
                                 onClick={() => setStep(step + 1)}
                                 disabled={!isStepValid(step)}
