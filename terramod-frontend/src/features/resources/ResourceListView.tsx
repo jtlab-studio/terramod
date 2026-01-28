@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useInfraStore } from '../../store/infraStore';
 import { useUIStore } from '../../store/uiStore';
 import { DomainType } from '../../types/domain';
+import ResourceInspector from '../inspector/ResourceInspector';
 
 const ResourceListView: React.FC = () => {
     const domains = useInfraStore((state) => state.domains);
@@ -98,28 +99,25 @@ const ResourceListView: React.FC = () => {
             <div
                 key={resource.id}
                 onClick={() => setSelectedId(resource.id)}
-                className={`group relative p-4 rounded-xl backdrop-blur-sm cursor-pointer transition-all duration-200 ${isSelected
-                        ? 'bg-violet-500/10 border-2 border-violet-500/50 shadow-lg shadow-violet-500/10'
-                        : 'bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20'
+                className={`group relative p-2 rounded-lg backdrop-blur-sm cursor-pointer transition-all duration-200 ${isSelected
+                    ? 'bg-violet-500/10 border border-violet-500/50 shadow-lg shadow-violet-500/10'
+                    : 'bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20'
                     }`}
             >
-                <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <div className="text-2xl">{getResourceIcon(resource.type)}</div>
+                <div className="flex items-center justify-between gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                        <div className="text-base flex-shrink-0">{getResourceIcon(resource.type)}</div>
                         <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                <h3 className="font-medium text-white truncate">{resource.name}</h3>
-                                <span className={`px-2 py-0.5 rounded-md text-xs font-medium border ${getEnvironmentColor(env)}`}>
-                                    {env.toUpperCase()}
+                            <h3 className="font-medium text-white truncate text-xs">{resource.name}</h3>
+                            <div className="flex items-center gap-1 mt-0.5">
+                                <span className={`px-1 py-0.5 rounded text-[10px] font-medium border ${getEnvironmentColor(env)}`}>
+                                    {env.slice(0, 3).toUpperCase()}
                                 </span>
                                 {az && (
-                                    <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-violet-500/10 text-violet-300 border border-violet-500/20">
+                                    <span className="px-1 py-0.5 rounded text-[10px] font-medium bg-violet-500/10 text-violet-300 border border-violet-500/20">
                                         {az.split('-').pop()?.toUpperCase()}
                                     </span>
                                 )}
-                            </div>
-                            <div className="text-xs text-slate-400">
-                                {resource.type.replace('aws_', '').replace(/_/g, ' ')}
                             </div>
                         </div>
                     </div>
@@ -133,28 +131,14 @@ const ResourceListView: React.FC = () => {
                                 }
                             }
                         }}
-                        className="ml-2 w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-all duration-200 opacity-0 group-hover:opacity-100"
-                        title="Delete resource"
+                        className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-all duration-200 opacity-0 group-hover:opacity-100"
+                        title="Delete"
                     >
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                         </svg>
                     </button>
                 </div>
-
-                {/* Additional info for specific resource types */}
-                {resource.type === 'aws_subnet' && resource.arguments.cidr_block && (
-                    <div className="mt-3 pt-3 border-t border-white/5">
-                        <div className="text-xs text-slate-400">
-                            CIDR: <span className="text-slate-300 font-mono">{resource.arguments.cidr_block}</span>
-                            {resource.arguments.map_public_ip_on_launch && (
-                                <span className="ml-2 px-2 py-0.5 rounded bg-blue-500/10 text-blue-300 border border-blue-500/20">
-                                    Public
-                                </span>
-                            )}
-                        </div>
-                    </div>
-                )}
             </div>
         );
     };
@@ -209,7 +193,8 @@ const ResourceListView: React.FC = () => {
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                                {/* 5 COLUMNS - maximum compactness */}
+                                <div className="grid grid-cols-5 gap-2">
                                     {domainResources.map(renderResourceCard)}
                                 </div>
                             </div>
@@ -278,7 +263,8 @@ const ResourceListView: React.FC = () => {
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                        {/* 5 COLUMNS - maximum compactness */}
+                        <div className="grid grid-cols-5 gap-2">
                             {envResources.map(renderResourceCard)}
                         </div>
                     </div>
@@ -290,45 +276,75 @@ const ResourceListView: React.FC = () => {
     const availableCategories = Object.keys(resourcesByDomain) as DomainType[];
 
     return (
-        <div className="flex flex-col h-full flex-1">
-            <div className="backdrop-blur-xl bg-slate-900/30 border-b border-white/5">
-                <div className="px-6 pt-6 pb-4">
-                    <h2 className="text-2xl font-semibold text-white mb-1">Resources</h2>
-                    <p className="text-sm text-slate-400">
-                        {allResources.length} {allResources.length === 1 ? 'resource' : 'resources'} across {environments.length} {environments.length === 1 ? 'environment' : 'environments'}
-                    </p>
-                </div>
+        <div className="flex h-full relative">
+            {/* Main content - full width when no selection */}
+            <div className="flex flex-col flex-1">
+                <div className="backdrop-blur-xl bg-slate-900/30 border-b border-white/5">
+                    <div className="px-6 pt-6 pb-4">
+                        <h2 className="text-2xl font-semibold text-white mb-1">Resources</h2>
+                        <p className="text-sm text-slate-400">
+                            {allResources.length} {allResources.length === 1 ? 'resource' : 'resources'} across {environments.length} {environments.length === 1 ? 'environment' : 'environments'}
+                        </p>
+                    </div>
 
-                <div className="flex px-6 gap-2 overflow-x-auto pb-3 scrollbar-hide">
-                    <button
-                        onClick={() => setActiveTab('overview')}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap ${activeTab === 'overview'
+                    <div className="flex px-6 gap-2 overflow-x-auto pb-3 scrollbar-hide">
+                        <button
+                            onClick={() => setActiveTab('overview')}
+                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap ${activeTab === 'overview'
                                 ? 'bg-violet-500/20 text-violet-300 border border-violet-500/30'
                                 : 'text-slate-400 hover:text-slate-300 hover:bg-white/5'
-                            }`}
-                    >
-                        Overview
-                    </button>
-
-                    {availableCategories.map((category) => (
-                        <button
-                            key={category}
-                            onClick={() => setActiveTab(category)}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap ${activeTab === category
-                                    ? 'bg-violet-500/20 text-violet-300 border border-violet-500/30'
-                                    : 'text-slate-400 hover:text-slate-300 hover:bg-white/5'
                                 }`}
                         >
-                            <span>{getCategoryIcon(category)}</span>
-                            <span>{getCategoryLabel(category)}</span>
+                            Overview
                         </button>
-                    ))}
+
+                        {availableCategories.map((category) => (
+                            <button
+                                key={category}
+                                onClick={() => setActiveTab(category)}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap ${activeTab === category
+                                    ? 'bg-violet-500/20 text-violet-300 border border-violet-500/30'
+                                    : 'text-slate-400 hover:text-slate-300 hover:bg-white/5'
+                                    }`}
+                            >
+                                <span>{getCategoryIcon(category)}</span>
+                                <span>{getCategoryLabel(category)}</span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-6">
+                    {activeTab === 'overview' && renderOverviewTab()}
+                    {activeTab !== 'overview' && renderCategoryTab(activeTab)}
                 </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6">
-                {activeTab === 'overview' && renderOverviewTab()}
-                {activeTab !== 'overview' && renderCategoryTab(activeTab)}
+            {/* Slide-in Inspector Panel - slides from right */}
+            <div
+                className={`absolute top-0 right-0 h-full w-96 backdrop-blur-xl bg-slate-900/95 border-l border-white/10 shadow-2xl transform transition-transform duration-300 ease-in-out z-20 ${selectedId ? 'translate-x-0' : 'translate-x-full'
+                    }`}
+                onMouseLeave={() => {
+                    // Close panel when mouse leaves
+                    setSelectedId(null);
+                }}
+            >
+                {selectedId && (
+                    <div className="h-full flex flex-col">
+                        <div className="flex-shrink-0 backdrop-blur-xl bg-slate-900/95 border-b border-white/10 p-4 flex items-center justify-between">
+                            <h3 className="text-sm font-semibold text-white">Configure Resource</h3>
+                            <button
+                                onClick={() => setSelectedId(null)}
+                                className="w-6 h-6 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-all flex items-center justify-center"
+                            >
+                                ✕
+                            </button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-6">
+                            <ResourceInspector resourceId={selectedId} />
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );

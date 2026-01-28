@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useUIStore } from '../store/uiStore';
 import { useInfraStore } from '../store/infraStore';
 import ResourceListView from '../features/resources/ResourceListView';
-import ResourceInspector from '../features/inspector/ResourceInspector';
 import ExportModal from '../features/export/ExportModal';
 import StackSelector from '../features/stack/StackSelector';
 import CostEstimateModal from '../features/cost/CostEstimateModal';
@@ -196,27 +195,9 @@ const MainLayout: React.FC = () => {
                 onNewStack={handleNewStack}
             />
 
-            <div className="flex flex-1 overflow-hidden">
+            {/* Full-width content - inspector is now inside ResourceListView */}
+            <div className="flex-1 overflow-hidden">
                 <ResourceListView />
-
-                <div className="w-96 backdrop-blur-xl bg-slate-900/30 border-l border-white/5 flex flex-col">
-                    {selectedId ? (
-                        <div className="p-6 overflow-y-auto">
-                            <ResourceInspector resourceId={selectedId} />
-                        </div>
-                    ) : (
-                        <div className="flex items-center justify-center h-full p-6">
-                            <div className="text-center">
-                                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-violet-500/10 to-purple-600/10 border border-violet-500/20 flex items-center justify-center">
-                                    <svg className="w-8 h-8 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                    </svg>
-                                </div>
-                                <p className="text-sm text-slate-400">Select a resource to configure</p>
-                            </div>
-                        </div>
-                    )}
-                </div>
             </div>
 
             <ExportModal isOpen={exportModalOpen} onClose={() => setExportModalOpen(false)} />
