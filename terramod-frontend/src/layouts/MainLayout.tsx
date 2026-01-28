@@ -1,14 +1,13 @@
 import React, { useState } from 'react';
 import { useUIStore } from '../store/uiStore';
 import { useInfraStore } from '../store/infraStore';
-import LeftPanel from '../features/modules/LeftPanel';
-import ModuleContent from '../features/modules/ModuleContent';
+import ResourceListView from '../features/resources/ResourceListView';
 import DeploymentConfigBar from '../features/modules/DeploymentConfigBar';
 import ResourceInspector from '../features/inspector/ResourceInspector';
 import ExportModal from '../features/export/ExportModal';
 import StackSelector from '../features/stack/StackSelector';
-import StackWizard from '../features/stack/StackWizard';
 import CostEstimateModal from '../features/cost/CostEstimateModal';
+import { getStackTemplate } from '../config/stackTemplates';
 
 const Header: React.FC<{
     onExport: () => void;
@@ -19,7 +18,6 @@ const Header: React.FC<{
     const domains = useInfraStore((state) => state.domains);
     const resources = useInfraStore((state) => state.resources);
     const connections = useInfraStore((state) => state.connections);
-
     const currentStackType = useInfraStore((state) => state.currentStackType);
 
     const handleNew = () => {
@@ -94,8 +92,7 @@ const Header: React.FC<{
                     </div>
                 )}
                 <div className="text-xs text-gray-400">
-                    {domainCount} {domainCount === 1 ? 'module' : 'modules'} •
-                    {' '}{resourceCount} {resourceCount === 1 ? 'resource' : 'resources'}
+                    {resourceCount} {resourceCount === 1 ? 'resource' : 'resources'}
                 </div>
             </div>
             <div className="flex items-center gap-2">
@@ -122,7 +119,7 @@ const Header: React.FC<{
 
                 <div className="h-6 w-px bg-gray-700 mx-1"></div>
 
-                {/* Cost Estimate Button - Prominent */}
+                {/* Cost Estimate Button */}
                 <button
                     onClick={onShowCosts}
                     className="px-4 py-1.5 bg-blue-700 hover:bg-blue-600 text-blue-100 rounded transition-colors font-medium text-sm border border-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -149,28 +146,75 @@ const MainLayout: React.FC = () => {
     const [exportModalOpen, setExportModalOpen] = useState(false);
     const [costModalOpen, setCostModalOpen] = useState(false);
     const [showStackSelector, setShowStackSelector] = useState(false);
-    const [selectedStackId, setSelectedStackId] = useState<string | null>(null);
 
     const domains = useInfraStore((state) => state.domains);
+    const resources = useInfraStore((state) => state.resources);
+    const addDomain = useInfraStore((state) => state.addDomain);
+    const addResource = useInfraStore((state) => state.addResource);
     const currentStackType = useInfraStore((state) => state.currentStackType);
     const setCurrentStackType = useInfraStore((state) => state.setCurrentStackType);
+    const deploymentConfig = useInfraStore((state) => state.deploymentConfig);
 
-    // Show stack selector if no domains exist and no stack type selected
-    const shouldShowStackSelector = domains.size === 0 && !currentStackType && !selectedStackId;
+    // Show stack selector if no resources exist and no stack type selected
+    const shouldShowStackSelector = resources.size === 0 && !currentStackType;
 
     const handleStackSelected = (stackId: string) => {
-        setSelectedStackId(stackId);
+        const template = getStackTemplate(stackId);
+        if (!template) {
+            alert('Stack template not found');
+            return;
+        }
+
+        // Set current stack type
         setCurrentStackType(stackId);
-    };
 
-    const handleStackWizardComplete = () => {
-        setSelectedStackId(null);
-        // Stack is now created, show main interface
-    };
+        // Create all required modules (domains)
+        const createdDomains: Record<string, string> = {};
+        template.requiredModules.forEach((moduleType) => {
+            const moduleId = `module_${moduleType}_${Date.now()}`;
+            addDomain({
+                id: moduleId,
+                name: moduleType.charAt(0).toUpperCase() + moduleType.slice(1),
+                type: moduleType,
+                resourceIds: [],
+                inputs: [],
+                outputs: [],
+                position: { x: 0, y: 0 },
+                width: 200,
+                height: 150,
+                scope: 'regional'
+            });
+            createdDomains[moduleType] = moduleId;
+        });
 
-    const handleStackWizardCancel = () => {
-        setSelectedStackId(null);
-        setCurrentStackType(null);
+        // Add starter resources
+        template.starterResources.forEach((starterGroup) => {
+            const domainId = createdDomains[starterGroup.domain];
+            if (!domainId) return;
+
+            starterGroup.resources.forEach((resourceDef) => {
+                const resourceId = `resource_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+                // Get default arguments based on resource type
+                const defaultArgs = getDefaultArgumentsForResource(resourceDef.type);
+
+                addResource({
+                    id: resourceId,
+                    type: resourceDef.type,
+                    domainId: domainId,
+                    name: resourceDef.name,
+                    arguments: defaultArgs,
+                    deployment: {
+                        strategy: getDefaultDeploymentStrategy(resourceDef.type),
+                        cidrAuto: resourceDef.type === 'aws_subnet'
+                    },
+                    position: { x: 0, y: 0 },
+                    validationState: { isValid: true, errors: [], warnings: [] }
+                });
+            });
+        });
+
+        // Close stack selector and show main interface
         setShowStackSelector(false);
     };
 
@@ -179,17 +223,6 @@ const MainLayout: React.FC = () => {
         setCurrentStackType(null);
         setShowStackSelector(true);
     };
-
-    // Stack Wizard is showing
-    if (selectedStackId) {
-        return (
-            <StackWizard
-                stackId={selectedStackId}
-                onComplete={handleStackWizardComplete}
-                onCancel={handleStackWizardCancel}
-            />
-        );
-    }
 
     // Stack Selector is showing
     if (shouldShowStackSelector || showStackSelector) {
@@ -200,7 +233,7 @@ const MainLayout: React.FC = () => {
         );
     }
 
-    // Main interface
+    // Main interface - Golden path: Resource list + Inspector
     return (
         <div className="flex flex-col h-screen bg-gray-900">
             <Header
@@ -210,11 +243,8 @@ const MainLayout: React.FC = () => {
             />
 
             <div className="flex flex-1 overflow-hidden">
-                {/* Left: Module Gallery / Resource Palette */}
-                <LeftPanel />
-
-                {/* Center: Module Content */}
-                <ModuleContent />
+                {/* Center: Resource List View */}
+                <ResourceListView />
 
                 {/* Right: Resource Inspector */}
                 <div className="w-80 bg-gray-900 border-l border-gray-800 flex flex-col">
@@ -252,5 +282,41 @@ const MainLayout: React.FC = () => {
         </div>
     );
 };
+
+// Helper functions
+function getDefaultArgumentsForResource(resourceType: string): Record<string, any> {
+    const defaults: Record<string, any> = {};
+
+    if (resourceType === 'aws_vpc') {
+        defaults.cidr_block = '10.0.0.0/16';
+        defaults.enable_dns_hostnames = true;
+        defaults.enable_dns_support = true;
+    } else if (resourceType === 'aws_subnet') {
+        defaults.cidr_block = '10.0.1.0/24';
+    } else if (resourceType === 'aws_instance') {
+        defaults.ami = 'ami-0c55b159cbfafe1f0';
+        defaults.instance_type = 't3.micro';
+    } else if (resourceType === 'aws_s3_bucket') {
+        defaults.bucket = `my-bucket-${Date.now()}`;
+    } else if (resourceType === 'aws_security_group') {
+        defaults.description = 'Security group created by Terramod';
+    }
+
+    return defaults;
+}
+
+function getDefaultDeploymentStrategy(resourceType: string): any {
+    const strategies: Record<string, string> = {
+        'aws_vpc': 'single',
+        'aws_subnet': 'per-az',
+        'aws_nat_gateway': 'per-az',
+        'aws_instance': 'per-az',
+        'aws_lb': 'multi-az',
+        'aws_alb': 'multi-az',
+        'aws_nlb': 'multi-az',
+        'aws_rds_cluster': 'multi-az'
+    };
+    return strategies[resourceType] || 'single';
+}
 
 export default MainLayout;
