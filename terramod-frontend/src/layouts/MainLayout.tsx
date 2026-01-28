@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useUIStore } from '../store/uiStore';
 import { useInfraStore } from '../store/infraStore';
 import ResourceListView from '../features/resources/ResourceListView';
-import DeploymentConfigBar from '../features/modules/DeploymentConfigBar';
 import ResourceInspector from '../features/inspector/ResourceInspector';
 import ExportModal from '../features/export/ExportModal';
 import StackSelector from '../features/stack/StackSelector';
@@ -44,7 +43,7 @@ const Header: React.FC<{
         const btn = document.getElementById('save-btn');
         if (btn) {
             const originalText = btn.textContent;
-            btn.textContent = '✅ Saved!';
+            btn.textContent = '✓ Saved';
             setTimeout(() => {
                 btn.textContent = originalText;
             }, 2000);
@@ -69,9 +68,9 @@ const Header: React.FC<{
                         useInfraStore.getState().setCurrentStackType(projectData.currentStackType);
                     }
 
-                    alert('✅ Project loaded');
+                    alert('✓ Project loaded');
                 } catch (error) {
-                    alert('❌ Failed to load project');
+                    alert('✕ Failed to load project');
                 }
             }
         } else {
@@ -80,61 +79,72 @@ const Header: React.FC<{
     };
 
     const resourceCount = resources.size;
-    const domainCount = domains.size;
+    const template = currentStackType ? getStackTemplate(currentStackType) : null;
 
     return (
-        <header className="h-14 bg-gray-900 border-b border-gray-800 text-white flex items-center justify-between px-4">
-            <div className="flex items-center gap-4">
-                <h1 className="text-xl font-bold text-gray-100">Terramod</h1>
-                {currentStackType && (
-                    <div className="text-xs text-gray-400 bg-gray-800 px-2 py-1 rounded">
-                        {currentStackType.replace(/-/g, ' ').toUpperCase()}
+        <header className="h-16 backdrop-blur-xl bg-slate-900/50 border-b border-white/5 flex items-center justify-between px-6">
+            <div className="flex items-center gap-6">
+                <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
+                        <span className="text-white text-lg font-bold">T</span>
+                    </div>
+                    <h1 className="text-xl font-semibold text-white">Terramod</h1>
+                </div>
+
+                {template && (
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10">
+                        <span className="text-lg">{template.icon}</span>
+                        <span className="text-sm font-medium text-slate-300">{template.name}</span>
                     </div>
                 )}
-                <div className="text-xs text-gray-400">
+
+                <div className="text-sm text-slate-400">
                     {resourceCount} {resourceCount === 1 ? 'resource' : 'resources'}
                 </div>
             </div>
+
             <div className="flex items-center gap-2">
                 <button
                     onClick={handleNew}
-                    className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded transition-colors text-sm border border-gray-700"
+                    className="px-4 py-2 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-white/5 transition-all duration-200"
                 >
-                    🆕 New Stack
+                    New Stack
                 </button>
+
+                <div className="w-px h-6 bg-white/10"></div>
+
                 <button
                     id="save-btn"
                     onClick={handleSave}
-                    className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded transition-colors text-sm border border-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
                     disabled={resourceCount === 0}
+                    className="px-4 py-2 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-white/5 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
                 >
-                    💾 Save
+                    Save
                 </button>
+
                 <button
                     onClick={handleLoad}
-                    className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded transition-colors text-sm border border-gray-700"
+                    className="px-4 py-2 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-white/5 transition-all duration-200"
                 >
-                    📂 Load
+                    Load
                 </button>
 
-                <div className="h-6 w-px bg-gray-700 mx-1"></div>
+                <div className="w-px h-6 bg-white/10"></div>
 
-                {/* Cost Estimate Button */}
                 <button
                     onClick={onShowCosts}
-                    className="px-4 py-1.5 bg-blue-700 hover:bg-blue-600 text-blue-100 rounded transition-colors font-medium text-sm border border-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
                     disabled={resourceCount === 0}
-                    title="See cost estimates for all scenarios"
+                    className="px-4 py-2 rounded-lg text-sm font-medium bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 border border-violet-500/20 hover:border-violet-500/30 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
                 >
-                    💰 Estimate Costs
+                    Estimate Costs
                 </button>
 
                 <button
                     onClick={onExport}
-                    className="px-4 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-100 rounded transition-colors font-medium text-sm border border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
                     disabled={resourceCount === 0}
+                    className="px-4 py-2 rounded-lg text-sm font-medium bg-gradient-to-r from-violet-500 to-purple-600 text-white hover:from-violet-600 hover:to-purple-700 shadow-lg shadow-violet-500/20 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
                 >
-                    📦 Export Terraform
+                    Export
                 </button>
             </div>
         </header>
@@ -153,9 +163,7 @@ const MainLayout: React.FC = () => {
     const addResource = useInfraStore((state) => state.addResource);
     const currentStackType = useInfraStore((state) => state.currentStackType);
     const setCurrentStackType = useInfraStore((state) => state.setCurrentStackType);
-    const deploymentConfig = useInfraStore((state) => state.deploymentConfig);
 
-    // Show stack selector if no resources exist and no stack type selected
     const shouldShowStackSelector = resources.size === 0 && !currentStackType;
 
     const handleStackSelected = (stackId: string) => {
@@ -165,10 +173,8 @@ const MainLayout: React.FC = () => {
             return;
         }
 
-        // Set current stack type
         setCurrentStackType(stackId);
 
-        // Create all required modules (domains)
         const createdDomains: Record<string, string> = {};
         template.requiredModules.forEach((moduleType) => {
             const moduleId = `module_${moduleType}_${Date.now()}`;
@@ -187,15 +193,12 @@ const MainLayout: React.FC = () => {
             createdDomains[moduleType] = moduleId;
         });
 
-        // Add starter resources
         template.starterResources.forEach((starterGroup) => {
             const domainId = createdDomains[starterGroup.domain];
             if (!domainId) return;
 
             starterGroup.resources.forEach((resourceDef) => {
                 const resourceId = `resource_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-                // Get default arguments based on resource type
                 const defaultArgs = getDefaultArgumentsForResource(resourceDef.type);
 
                 addResource({
@@ -214,7 +217,6 @@ const MainLayout: React.FC = () => {
             });
         });
 
-        // Close stack selector and show main interface
         setShowStackSelector(false);
     };
 
@@ -224,18 +226,12 @@ const MainLayout: React.FC = () => {
         setShowStackSelector(true);
     };
 
-    // Stack Selector is showing
     if (shouldShowStackSelector || showStackSelector) {
-        return (
-            <StackSelector
-                onStackSelected={handleStackSelected}
-            />
-        );
+        return <StackSelector onStackSelected={handleStackSelected} />;
     }
 
-    // Main interface - Golden path: Resource list + Inspector
     return (
-        <div className="flex flex-col h-screen bg-gray-900">
+        <div className="flex flex-col h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
             <Header
                 onExport={() => setExportModalOpen(true)}
                 onShowCosts={() => setCostModalOpen(true)}
@@ -243,35 +239,30 @@ const MainLayout: React.FC = () => {
             />
 
             <div className="flex flex-1 overflow-hidden">
-                {/* Center: Resource List View */}
                 <ResourceListView />
 
-                {/* Right: Resource Inspector */}
-                <div className="w-80 bg-gray-900 border-l border-gray-800 flex flex-col">
+                <div className="w-96 backdrop-blur-xl bg-slate-900/30 border-l border-white/5 flex flex-col">
                     {selectedId ? (
-                        <div className="p-4 overflow-y-auto">
+                        <div className="p-6 overflow-y-auto">
                             <ResourceInspector resourceId={selectedId} />
                         </div>
                     ) : (
-                        <div className="flex items-center justify-center h-full p-4">
-                            <div className="text-center text-gray-500">
-                                <p className="text-sm">Select a resource to configure</p>
+                        <div className="flex items-center justify-center h-full p-6">
+                            <div className="text-center">
+                                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-violet-500/10 to-purple-600/10 border border-violet-500/20 flex items-center justify-center">
+                                    <svg className="w-8 h-8 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                </div>
+                                <p className="text-sm text-slate-400">Select a resource to configure</p>
                             </div>
                         </div>
                     )}
                 </div>
             </div>
 
-            {/* Bottom: Deployment Config Bar */}
-            <DeploymentConfigBar />
+            <ExportModal isOpen={exportModalOpen} onClose={() => setExportModalOpen(false)} />
 
-            {/* Export Modal */}
-            <ExportModal
-                isOpen={exportModalOpen}
-                onClose={() => setExportModalOpen(false)}
-            />
-
-            {/* Cost Estimate Modal */}
             {currentStackType && (
                 <CostEstimateModal
                     isOpen={costModalOpen}
@@ -283,7 +274,6 @@ const MainLayout: React.FC = () => {
     );
 };
 
-// Helper functions
 function getDefaultArgumentsForResource(resourceType: string): Record<string, any> {
     const defaults: Record<string, any> = {};
 
